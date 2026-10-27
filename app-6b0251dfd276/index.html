@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Guild Tool</title>
+<link rel="stylesheet" href="style.css?v=20261028003300">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="favicon.ico">
+<link rel="stylesheet" href="webapp/shim.css?v=20261028003300">
+</head>
+<body>
+<div id="app">
+  <div class="winbg" id="winBg"></div>
+  <div class="phasemark" id="phaseMark" hidden></div>
+  <div class="araidimg" id="aRaidImg" hidden></div>
+  <header class="top pywebview-drag-region">
+    <span class="title pywebview-drag-region" id="appTitle">Guild Tool</span>
+    <nav class="pagetabs" id="pagetabs">
+      <button class="ptab" data-page="calendar"><i class="ptico pimg" style="--ico:url(icons/tab_calendar.png)"></i>Calendar</button>
+      <button class="ptab" data-page="comps"><i class="ptico pimg" style="--ico:url(icons/tab_comps.png)"></i>Compos</button>
+      <button class="ptab" data-page="assigns"><i class="ptico pimg" style="--ico:url(icons/tab_assigns.png)"></i>Assigns</button>
+      <button class="ptab" data-page="members"><i class="ptico pimg" style="--ico:url(icons/tab_members.png)"></i>Members</button>
+      <button class="ptab" data-page="loots"><i class="ptico pimg" style="--ico:url(icons/tab_loots.png)"></i>Loots</button>
+      <button class="ptab" data-page="craft"><svg class="ptico" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg>Craft</button>
+    </nav>
+    <div class="status pywebview-drag-region">
+      <span id="syncStatus" class="st-line"></span>
+    </div>
+    <button class="tbtn online" id="onlineBtn" title="Guild Tool users online" hidden><i></i><b id="onlineN">0</b></button>
+    <button class="tbtn ico" id="syncBtn" title="Fetch events and sign-ups from Raid-Helper"><svg class="tico" viewBox="0 0 24 24"><path d="M19.5 9A8 8 0 0 0 5.2 6.8M4.5 15a8 8 0 0 0 14.3 2.2"/><path class="fill" d="M20.8 3.6v6.6h-6.6zM3.2 20.4v-6.6h6.6z"/></svg></button>
+    <button class="tbtn ico" id="settingsBtn" title="Settings"><svg class="tico" viewBox="0 0 24 24"><path d="M10.2 2.5h3.6l.6 2.8 1.6.7 2.4-1.6 2.6 2.6-1.6 2.4.7 1.6 2.8.6v3.6l-2.8.6-.7 1.6 1.6 2.4-2.6 2.6-2.4-1.6-1.6.7-.6 2.8h-3.6l-.6-2.8-1.6-.7-2.4 1.6-2.6-2.6 1.6-2.4-.7-1.6-2.8-.6v-3.6l2.8-.6.7-1.6-1.6-2.4 2.6-2.6 2.4 1.6 1.6-.7z"/><circle cx="12" cy="12" r="3.3"/></svg></button>
+    <button class="tbtn user" id="userBtn"><img id="userAvatar" alt="" hidden><span id="userName">Login</span><i class="car"></i></button>
+    <div class="winctl">
+      <button id="wMin" title="Minimize"><svg viewBox="0 0 12 12"><path d="M2 6.5h8v1H2z"/></svg></button>
+      <button id="wMax" title="Maximize / restore"><svg viewBox="0 0 12 12"><path d="M2 2h8v8H2V2zm1 2v5h6V4H3z"/></svg></button>
+      <button id="wClose" class="close" title="Close"><svg viewBox="0 0 12 12"><path d="M2.7 2 6 5.3 9.3 2l.7.7L6.7 6 10 9.3l-.7.7L6 6.7 2.7 10 2 9.3 5.3 6 2 2.7z"/></svg></button>
+    </div>
+  </header>
+  <div class="sub">
+    <button class="nav" id="navPrev"><svg viewBox="0 0 12 12"><path d="M8.5 1.5v9L2.5 6z"/></svg></button>
+    <span class="subtitle" id="subTitle"></span>
+    <button class="nav" id="navNext"><svg viewBox="0 0 12 12"><path d="M3.5 1.5v9l6-4.5z"/></svg></button>
+    <div class="attph lphsel" id="lootPhSel" hidden data-help="Phase of the loots (only this tab) · wheel: next / previous"></div>
+    <button class="btn small" id="navToday">Today</button>
+    <button class="btn small absence" id="navAbsence" title="Mark the days you will be away">Absence</button>
+    <button class="btn small ibtn" id="navEditComp" data-help="Open this comp in Raid Comps"><svg viewBox="0 0 24 24"><path d="M9 2h6v13l-3 7-3-7zm1.5 1.5v2h3v-2z"/></svg><span>Edit Comp</span></button>    <span class="subinfo" id="subInfo"></span>
+    <div class="phwheel" id="phaseWheel" data-help="Phase of the guild · scroll or click to change (admins)"><span class="phl">Phase</span><div class="phnums" id="phaseNums"></div></div>
+    <div class="vbtns" id="viewBtns" hidden></div>
+    <button class="tbtn ico tlook" id="tabLookBtn" data-help="Appearance of this tab"><svg class="tico" viewBox="0 0 24 24"><path d="M10.2 2.5h3.6l.6 2.8 1.6.7 2.4-1.6 2.6 2.6-1.6 2.4.7 1.6 2.8.6v3.6l-2.8.6-.7 1.6 1.6 2.4-2.6 2.6-2.4-1.6-1.6.7-.6 2.8h-3.6l-.6-2.8-1.6-.7-2.4 1.6-2.6-2.6 1.6-2.4-.7-1.6-2.8-.6v-3.6l2.8-.6.7-1.6-1.6-2.4 2.6-2.6 2.4 1.6 1.6-.7z"/><circle cx="12" cy="12" r="3.3"/></svg></button>
+    <div class="lsearch" id="lootSearch" hidden><input id="lootQ" autocomplete="off" spellcheck="false"><div class="lsug" id="lootSug" hidden></div><button class="ltypebtn" id="lootTypeBtn" hidden>Type</button><div class="ltypelist" id="lootTypeList" hidden></div></div>
+  </div>
+  <main class="pages">
+    <section class="page" id="page-calendar"><div class="cal" id="cal"></div></section>
+    <section class="page body" id="page-comps">
+      <div class="comps" id="comps"></div>
+      <aside class="side" id="side">
+        <div class="stabs">
+          <button class="stab" data-tab="signed">Signed<span></span></button>
+          <button class="stab" data-tab="rest">Rest<span></span></button>
+        </div>
+        <div class="seltext" id="selText"></div>
+        <div class="sortbar"><small>Sort priority · drag to reorder</small><div class="chips" data-chipbar="order"></div></div>
+        <div class="list" id="list"></div>
+        <div class="foot">
+          <button class="btn" id="afBuffBtn" style="flex-grow:13" title="Add only the sign-ups that bring missing raid buffs / debuffs to each comp that can be filled at 80% (players already placed stay)">Autofill Buffs</button>
+          <button class="btn pri" id="autofillBtn" style="flex-grow:8" title="Complete the selected comp (or every comp of the week linked to an event) with its sign-ups: raid buffs first, then classes and uncertain presences balanced (players already placed stay)">Autofill</button>
+          <button class="btn" id="clearBtn" style="flex-grow:4" title="Empty the selected comp, or every comp of the week"><img class="broom" src="icons/broom.png" alt="Clear"></button>
+        </div>
+      </aside>
+    </section>
+    <section class="page" id="page-assigns">
+      <div class="atabs pywebview-drag-region" id="aTabs"></div>
+      <div class="abody" id="aBody"></div>
+    </section>
+    <section class="page" id="page-craft"></section>
+    <section class="page" id="page-loots"></section>
+    <section class="page" id="page-members">
+      <div class="mtop"><small>Sort priority · drag to reorder</small><div class="chips" data-chipbar="membersOrder"></div><span class="mcount" id="mCount"></span><button class="mtrash" id="mTrash" data-mtrash hidden data-help="Characters removed from the shared database in the last 7 days: they can be restored until then."></button></div>
+      <div class="mhead"><span data-msort="alpha" data-help="Sort by this column first">Character</span><span data-msort="discord" data-help="Sort by this column first">Discord</span><span data-msort="level" data-help="Sort by this column first">Level</span><span data-msort="spec" data-help="Sort by this column first">Specs</span><span data-msort="attendance" data-help="Sort by this column first">Attendance</span><span>Professions</span><span data-msort="drole" data-help="Sort by this column first">Role</span></div>
+      <div class="mlist" id="mList"></div>
+    </section>
+  </main>
+</div>
+
+<div class="picker" id="picker" hidden></div>
+<div class="grip" id="grip" title="Resize"></div>
+<div class="tip" id="tip" hidden></div>
+<div class="menu" id="menu" hidden></div>
+<div class="toast" id="toast"></div>
+<div class="ghost" id="ghost" hidden></div>
+<div class="chipghost" id="chipGhost" hidden></div>
+
+<div class="fwin tlwin" id="tabLookWin" hidden>
+  <div class="fwbar" id="tlBar"><span id="tlTitle">Appearance</span><button class="fwx" id="tlClose" data-help="Close (Esc)">×</button></div>
+  <div class="fwbody" id="tlBody"></div>
+  <div class="fwfoot"><button class="btn small" id="tlUndo" data-help="Ctrl+Z">Undo</button><button class="btn small" id="tlRedo" data-help="Ctrl+Y">Redo</button><span class="help">Only this tab · general settings: Settings</span></div>
+</div>
+
+<div class="fwin" id="settingsWin" hidden>
+  <div class="fwbar" id="setBar"><span>Settings</span><button class="fwx" id="setClose" data-help="Close (Esc)">×</button></div>
+  <div class="fwtabs" id="setTabs"><button data-stab="appearance">Appearance</button><button data-stab="phases">Phases &amp; Raids</button><button data-stab="social">Social</button><button data-stab="admin">Admin</button></div>
+  <div class="fwbody" id="setBody">
+    <div class="stabpage" data-stabpage="appearance">
+    <div class="srow" data-help="Translate the interface (exe and addon) into French."><span class="sl">Français</span><button class="switch" id="apLang"><i></i></button></div>
+    <div class="srow" data-help="Opacity of the raid image behind each comp."><span class="sl">Comp images</span><span class="slider" data-key="compAlpha"></span></div>
+    <div class="srow two" data-help="Opacity and blur of the character list (Raid Comps) and of the Assigns tabs bar. Lower the opacity with some blur for a glass look."><span class="sl">List/Tab opac/blur</span><span class="slider" data-key="tabsAlpha"></span><span class="slider" data-key="listGlass"></span></div>
+    <div class="srow" data-help="Opacity of the window background image (and of the raid image when the Assigns thematic background is on)."><span class="sl">Background opacity</span><span class="slider" data-key="bgAlpha"></span></div>
+    <div class="srow" data-help="Opacity of the talent tree backgrounds (Members, character details)."><span class="sl">Talent background</span><span class="slider" data-key="talentBg"></span></div>
+    <div class="srow two" data-help="Members, character details: opacity and blur of the frames of the talents and of the attendance."><span class="sl">Char details opac/blur</span><span class="slider" data-key="detAlpha"></span><span class="slider" data-key="detBlur"></span></div>
+    <div class="srow two" data-help="Members: opacity and blur of the background of the character list."><span class="sl">Members Background opac/blur</span><span class="slider" data-key="membersAlpha"></span><span class="slider" data-key="membersBlur"></span></div>
+    <div class="srow" data-help="Show the background pictures chosen by the players for their characters (Members, character details)."><span class="sl">Members custom background</span><button class="switch" id="apCharImg"><i></i></button></div>
+    <div class="srow" data-help="In the Assigns tab, the window background becomes the image of the raid instead of the general background."><span class="sl">Assign's Thematic Background</span><button class="switch" id="apNoBg"><i></i></button></div>
+    <div class="srow" data-help="Place the raid image behind the whole window (blue frame) and the zone that fades out."><span class="sl">Assign background</span>
+      <button class="btn small" id="fadeBtn">Placement</button></div>
+    <div class="fadeed" id="fadeEd" hidden></div>
+    <div class="srow" data-help="Color of the selections, hovers and selected tabs."><span class="sl">Highlight</span>
+      <input type="color" id="apHl"><input type="color" id="apHl2" data-help="Second color of the gradient"><button class="ib" id="apHlReset" data-help="Default color">↺</button></div>
+    <div class="srow" data-help="Alternate progressively between two highlight colors."><span class="sl">Gradient</span><button class="switch" id="apHlGrad"><i></i></button></div>
+    <div class="srow" data-help="Color of the bars (tab bar, indicator bar of each tab) and of the buttons. The window background keeps its color."><span class="sl">Base color</span>
+      <input type="color" id="apBase"><button class="ib" id="apBaseReset" data-help="Default color">↺</button></div>
+    <div class="srow" data-help="Alternate lockout weeks in the calendar (Wednesday to Tuesday)."><span class="sl">Lockouts</span>
+      <input type="color" id="apLockA"><input type="color" id="apLockB"><button class="ib" id="apLockReset" data-help="Default colors">↺</button></div>
+    <div class="srow" data-help="Shown behind the whole window (in game too, after /reload; restart the game the first time)."><span class="sl">Background</span>
+      <button class="btn small" id="bgPick">Choose…</button><button class="btn small" id="bgRemove" data-help="Back to the default background (the one of the guild)">Default</button></div>
+    <div class="guildlook" id="guildLook"></div>
+    </div>
+    <div class="stabpage" data-stabpage="phases">
+    <p class="help" id="phasesRO" hidden>Only officers can edit the phases and raids.</p>
+    <div class="phed" id="phaseEd"></div>
+    </div>
+    <div class="stabpage" data-stabpage="social"><div id="socialBox"></div></div>
+    <div class="stabpage" data-stabpage="admin">
+    <div id="guildAdmin"></div>
+    <div class="sec">Raid-Helper</div>
+    <div class="guildkey" id="guildKey"></div>
+    <label class="sfield" id="localKeyRow" data-help="In Discord: /apikey (server admin). Only needed when the guild has no key saved on the server.">Raid-Helper API key (this PC only)<input id="cfgApiKey" data-cfg="apiKey" type="password" autocomplete="off"></label>
+    <label class="sfield" id="serverIdRow" data-help="Discord developer mode, right-click the server, Copy Server ID. Not needed once you choose your guild server in the Discord menu.">Discord server ID<input id="cfgServerId" data-cfg="serverId" autocomplete="off"></label>
+    <div class="sec">Discord and game</div>
+    <label class="sfield" data-help="Optional. Finds each sign-up's unique Discord username, so guild notes match automatically. No need to invite the bot.">Discord bot token<input id="cfgBotToken" data-cfg="botToken" type="password" autocomplete="off"></label>
+    
+    <label class="sfield" data-help="Minutes between automatic syncs, 0 = off.">Auto sync (minutes)<input id="cfgAuto" data-cfg="autoSyncMinutes" type="number" min="0" max="120"></label>
+
+    <div class="sec" data-help="Discord: channel settings, Integrations, Webhooks, New Webhook, Copy Webhook URL. Delete the webhook in Discord to revoke it.">Discord channels (webhooks)</div>
+    <div id="hooks"></div>
+    <button class="btn small" id="addHook">Add channel</button>
+    </div>
+  </div>
+  <div class="fwfoot"><button class="btn small" id="setUndo" data-help="Ctrl+Z">Undo</button><button class="btn small" id="setRedo" data-help="Ctrl+Y">Redo</button><span class="undoinfo" id="undoInfo"></span></div>
+  <div class="fwgrip" id="setGrip"></div>
+</div>
+
+<div class="usermenu" id="userMenu" hidden></div>
+
+<div class="modal" id="cropModal" hidden>
+  <div class="dialog crop">
+    <h2 id="cropTitle">Window background</h2>
+    <p class="help" id="cropHelp">Drag the frame to choose the visible part of the image, drag its corner to resize it. The frame has the shape of the window.</p>
+    <div class="cropbox" id="cropBox"><img id="cropImg" alt=""><div class="croprect" id="cropRect"><span class="handle" id="cropHandle"></span></div></div>
+    <div class="cropfx" id="cropFx" hidden><label>Opacity <input type="range" id="cropA" min="0" max="100" value="100"><b id="cropAv">100%</b></label>
+      <label>Blurred <input type="range" id="cropB" min="0" max="100" value="0"><b id="cropBv">0%</b></label></div>
+    <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn pri" id="cropSave">Save</button></div>
+  </div>
+</div>
+
+<div class="modal" id="postModal" hidden>
+  <div class="dialog">
+    <h2>Post comp to Discord</h2>
+    <div class="form">
+      <label>Channel<select id="postHook"></select></label>
+      <label>Message<textarea id="postText" rows="7"></textarea></label>
+      <label class="check"><input type="checkbox" id="postImage" checked> Attach an image of the comp</label>
+    </div>
+    <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn pri" id="postSend">Post</button></div>
+  </div>
+</div>
+
+<div class="modal" id="linkModal" hidden>
+  <div class="dialog">
+    <h2>Link sign-up</h2>
+    <p class="help" id="linkInfo"></p>
+    <div class="form">
+      <label>Discord tag (as written in the guild notes)<input id="linkTag" list="tagList" autocomplete="off"></label>
+      <datalist id="tagList"></datalist>
+    </div>
+    <div class="actions"><button class="btn" id="linkClear">Remove link</button><button class="btn" data-close>Cancel</button><button class="btn pri" id="linkSave">Link</button></div>
+  </div>
+</div>
+
+<div class="modal" id="askModal" hidden>
+  <div class="dialog">
+    <h2 id="askTitle"></h2>
+    <div class="form" id="askForm"></div>
+    <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn pri" id="askOk">OK</button></div>
+  </div>
+</div>
+<div class="menu axdrop" id="axDrop" hidden></div>
+<div class="namepick" id="namePick" hidden><input id="namePickQ" autocomplete="off"><div class="nplist" id="namePickList"></div></div>
+
+<script src="html2canvas.min.js?v=20261028003300"></script>
+<script src="data.js?v=20261028003300"></script>
+<script src="talentref.js?v=20261028003300"></script>
+<script src="spells.js?v=20261028003300"></script>
+<script src="i18n.js?v=20261028003300"></script>
+<script src="autofill.js?v=20261028003300"></script>
+<script src="social.js?v=20261028003300"></script>
+<script src="app.js?v=20261028003300"></script>
+<script src="settings.js?v=20261028003300"></script>
+<script src="assigns.js?v=20261028003300"></script>
+<script src="user.js?v=20261028003300"></script>
+<script src="events.js?v=20261028003300"></script>
+<script src="craft.js?v=20261028003300"></script>
+<script src="loots.js?v=20261028003300"></script>
+<script src="bis.js?v=20261028003300"></script>
+<script src="webapp/shim.js?v=20261028003300"></script>
+</body>
+</html>

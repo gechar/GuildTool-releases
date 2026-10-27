@@ -1,0 +1,54 @@
+{
+ "version": "2.33.0",
+ "build": "20261028003300",
+ "files": [
+  {
+   "url": "py/app.py",
+   "path": "app.py"
+  },
+  {
+   "url": "py/cloud.py",
+   "path": "cloud.py"
+  },
+  {
+   "url": "py/remote.py",
+   "path": "remote.py"
+  },
+  {
+   "url": "py/luaio.py",
+   "path": "luaio.py"
+  },
+  {
+   "url": "py/cloud.json",
+   "path": "cloud.json"
+  },
+  {
+   "url": "py/webrt.py",
+   "path": "webrt.py"
+  },
+  {
+   "url": "img/bg_barrow.jpg",
+   "path": "web/img/bg_barrow.jpg"
+  },
+  {
+   "url": "img/bg_barrow_blur.jpg",
+   "path": "web/img/bg_barrow_blur.jpg"
+  },
+  {
+   "url": "img/bg_hyjal.jpg",
+   "path": "web/img/bg_hyjal.jpg"
+  },
+  {
+   "url": "img/bg_hyjal_blur.jpg",
+   "path": "web/img/bg_hyjal_blur.jpg"
+  },
+  {
+   "url": "img/bg_ony.jpg",
+   "path": "web/img/bg_ony.jpg"
+  },
+  {
+   "url": "img/bg_ony_blur.jpg",
+   "path": "web/img/bg_ony_blur.jpg"
+  }
+ ]
+}

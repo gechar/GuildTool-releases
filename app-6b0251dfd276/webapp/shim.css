@@ -1,0 +1,23 @@
+/* Guild Tool, version web : pas de boutons de fenêtre ni de poignée (c'est le navigateur), chargement, dossier du jeu */
+body.gtweb .winctl, body.gtweb #grip { display: none !important; }
+#webBoot { z-index: 400; }
+#webBoot .gatebox { gap: 14px; }
+.webbar { height: 3px; background: var(--border); overflow: hidden; position: relative; }
+.webbar i { position: absolute; top: 0; bottom: 0; width: 35%; background: var(--accent); animation: webbar 1.2s ease-in-out infinite; }
+@keyframes webbar { from { left: -35%; } to { left: 100%; } }
+#webFolder { z-index: 300; }
+.wfbox { width: 460px; }
+.wfopt { display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.wfopt .btn { flex: none; }
+.wfbox.busy { cursor: progress; }
+.wfbox.busy .btn { opacity: .5; pointer-events: none; }
+#webWow { position: fixed; left: 10px; bottom: 8px; z-index: 60; display: flex; align-items: center; gap: 8px; padding: 3px 4px 3px 8px;
+  font-size: 11px; color: var(--mute); background: rgba(var(--head-rgb), .9); border: 1px solid var(--border); }
+#webWow .wwl { display: flex; align-items: center; gap: 5px; color: var(--text); font-weight: 600; }
+#webWow svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+#webWow em { font-style: normal; color: var(--gold); }
+#webWow button, #webWow .wwbtn { padding: 2px 8px; border: 1px solid var(--border); background: var(--input); color: var(--text); font-weight: 600; text-decoration: none; }
+#webWow button:hover, #webWow .wwbtn:hover { background: var(--hover); }
+#webWow .hot { background: var(--accent); border-color: var(--accent); color: #fff; }
+#webWow .hot:hover { filter: brightness(1.1); background: var(--accent); }
+#webWow.warn { padding: 3px; }
