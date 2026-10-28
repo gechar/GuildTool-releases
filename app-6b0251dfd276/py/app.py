@@ -53,7 +53,6 @@ RESERVED_SLASH = {"/g", "/gm", "/guild", "/gq", "/gr", "/go", "/o", "/officer", 
                   "/random", "/join", "/leave", "/macro", "/target", "/cast", "/use", "/afk", "/dnd", "/logout",
                   "/quit", "/camp", "/played", "/time", "/follow", "/assist", "/focus", "/bg", "/i", "/instance"}
 USERNAME_TTL = 7 * 86400
-DISCORD_MEMBERS_TTL = 30 * 60
 
 DEFAULT_CONFIG = {
     "apiKey": "", "serverId": "", "botToken": "", "wowPath": "", "account": "",
@@ -1379,6 +1378,8 @@ class Bridge:
                 "socialPairs": self._social_pairs if self._cloud.officer else {},
                 # membres du serveur Discord (bot) : Members (sans perso, colonne Role), Settings > Social
                 "discordMembers": self._data.get("discordMembers") or {},
+                # mes notes (copie de celles du serveur, relue au Sync et à l'ouverture de Settings > Social)
+                "socialScores": self._social_scores(),
                 "version": APP_VERSION,
             }
 
@@ -1538,6 +1539,8 @@ class Bridge:
 
     def cloud_logout(self):
         self._social_pairs = {}
+        self._data.pop("socialScores", None)        # notes personnelles : pas au prochain compte connecté sur ce PC
+        _save(DATA_PATH, self._data)
         self._cloud.logout()
         self._safe_write()
         return self._cloud.public_state()
@@ -1589,26 +1592,43 @@ class Bridge:
             print("social pairs: %s" % e)
             return self._social_pairs
 
-    def _fetch_discord_members(self, force=False):
-        """Membres du serveur Discord (bot), leurs rôles et le propriétaire : gardés dans les données (relus au Sync au plus
-        toutes les DISCORD_MEMBERS_TTL secondes) ; échec : liste précédente gardée, erreur notée."""
-        gid = self._cloud.guild_id
+    def _set_discord_members(self, value):
+        """Liste des membres du serveur Discord telle que le serveur de la guilde la garde (doc « discordmembers »)."""
         cur = self._data.get("discordMembers") or {}
-        if not gid or (not force and cur.get("guild") == gid and time.time() - (cur.get("t") or 0) < DISCORD_MEMBERS_TTL):
-            return cur
+        same = cur.get("guild") == self._cloud.guild_id
+        v = value if isinstance(value, dict) else {}
+        self._data["discordMembers"] = {
+            "guild": self._cloud.guild_id, "t": int(time.time()), "error": v.get("error"),
+            "players": v.get("players") if v.get("players") is not None else (cur.get("players") if same else None),
+            "roles": v.get("roles") or (cur.get("roles") if same else []) or [],
+            "ownerId": v.get("ownerId") or (cur.get("ownerId") if same else None),
+        }
+        return self._data["discordMembers"]
+
+    def _fetch_discord_members(self, force=False):
+        """Membres du serveur Discord (bot), leurs rôles et le propriétaire : gardés par le serveur de la guilde (relus
+        chez Discord au plus toutes les 10 min, force = tout de suite) et reçus aussi en direct avec les docs ; échec :
+        liste précédente gardée, erreur notée."""
+        if not self._cloud.guild_id:
+            return self._data.get("discordMembers") or {}
         try:
-            r = self._cloud.api("social", guildId=gid, op="players", timeout=90)
+            r = self._cloud.api("social", guildId=self._cloud.guild_id, op="players", force=bool(force), timeout=90)
         except Exception as e:
             r = {"players": None, "error": str(e)}
-        same = cur.get("guild") == gid
-        self._data["discordMembers"] = {
-            "guild": gid, "t": int(time.time()), "error": r.get("error"),
-            "players": r.get("players") if r.get("players") is not None else (cur.get("players") if same else None),
-            "roles": r.get("roles") or (cur.get("roles") if same else []) or [],
-            "ownerId": r.get("ownerId") or (cur.get("ownerId") if same else None),
-        }
+        self._set_discord_members(r)
         _save(DATA_PATH, self._data)
         return self._data["discordMembers"]
+
+    def _fetch_social_scores(self):
+        """Mes notes (gardées par le serveur) : copie locale pour les montrer tout de suite au lancement."""
+        if not self._cloud.guild_id:
+            return
+        try:
+            scores = self._cloud.api("social", guildId=self._cloud.guild_id, op="get").get("scores") or {}
+        except Exception as e:
+            print("social scores: %s" % e)
+            return
+        self._data["socialScores"] = {"guild": self._cloud.guild_id, "scores": scores}
 
     def discord_members_refresh(self):
         """Relit tout de suite les membres du serveur Discord (bouton ↻ de Settings > Social)."""
@@ -1620,13 +1640,22 @@ class Bridge:
             gid = self._cloud.guild_id
             if not gid:
                 raise Exception("Choose your guild server first.")
-            return {"scores": self._cloud.api("social", guildId=gid, op="get").get("scores") or {}}
+            self._fetch_social_scores()
+            self._social_pairs = self._fetch_social_pairs()
+            _save(DATA_PATH, self._data)
+            return {"scores": self._social_scores(), "pairs": self._social_pairs if self._cloud.officer else {}}
         return self._cloud_call(go)
+
+    def _social_scores(self):
+        s = self._data.get("socialScores") or {}
+        return (s.get("scores") or {}) if s.get("guild") == self._cloud.guild_id else {}
 
     def social_set(self, target, score):
         """Note 1..5 donnée à un joueur (0 = retirée, compte comme 3) ; officier : sommes par paire relues."""
         def go():
             r = self._cloud.api("social", guildId=self._cloud.guild_id, op="set", target=str(target), score=int(score or 0))
+            self._data["socialScores"] = {"guild": self._cloud.guild_id, "scores": r.get("scores") or {}}
+            _save(DATA_PATH, self._data)
             self._social_pairs = self._fetch_social_pairs()
             return {"scores": r.get("scores") or {}, "pairs": self._social_pairs if self._cloud.officer else {}}
         return self._cloud_call(go)
@@ -2240,6 +2269,7 @@ class Bridge:
         self._process_grants()
         self._data["cloudMembers"] = cl.members()
         self._social_pairs = self._fetch_social_pairs()
+        self._fetch_social_scores()
         self._fetch_discord_members()
         if stats["received"] or stats["files"]:
             self._write_fade_masks()
@@ -2265,6 +2295,12 @@ class Bridge:
             if full:
                 self._push_absences(marks)
                 got = self._sync_chars(marks)
+                # officiers : notes des autres joueurs prises en compte dans les compos sans attendre un Sync
+                if cl.officer:
+                    pairs = self._fetch_social_pairs()
+                    if pairs != self._social_pairs:
+                        self._social_pairs = pairs
+                        got += 1
             self._presence(force=stats.pop("pingBack", False))
             if stats["received"] or stats["sent"] or got:
                 _save(DATA_PATH, self._data)
@@ -2365,6 +2401,9 @@ class Bridge:
                 self._data["charDel"] = {n: int(dt or 0) for n, dt in (value or {}).items()}
             elif doc_id == "chartrash":
                 self._data["charTrash"] = dict(value or {})
+            elif doc_id == "discordmembers":
+                # membres du serveur Discord gardés par le serveur de la guilde (Members, Settings > Social)
+                self._set_discord_members(value)
             elif doc_id.startswith("online_"):
                 # un autre joueur ouvre l'appli : je renvoie mon signal pour qu'il me compte aussi
                 uid, online = doc_id[7:], self._data.setdefault("online", {})

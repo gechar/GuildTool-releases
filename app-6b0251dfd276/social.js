@@ -7,8 +7,9 @@
 
 const SOC_LABELS = ["", "Hate", "Avoid", "Even", "Like", "BFF"];
 const SOC_STAR_SVG = '<svg viewBox="0 0 24 24"><path d="M12 2.6l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.5l-5.9 3.1 1.2-6.5-4.8-4.6 6.6-.9z"/></svg>';
-let SOC = null, socLoading = false;
-const socSeq = {};
+// SOC.scores : mes notes, copie de celles du serveur (ST.socialScores au lancement), relue à l'ouverture de Social
+let SOC = null, socLoading = false, socAt = 0;
+const socSeq = {}, socPending = new Set();
 
 // id Discord d'un perso (inscription, propriétaire du perso partagé, ou tag de la note de guilde)
 let sidST = null, sidMap = null;
@@ -42,9 +43,10 @@ function socialBadge(comp) {
   return `<span class="csoc${s > 0 ? " pos" : s < 0 ? " neg" : ""}" data-help="Social score: how much the players of this comp like to play together (Preference Scores, Settings > Social). Officers only, never sent.">${s > 0 ? "+" + s : s}</span>`;
 }
 
-// joueurs : membres du serveur Discord (bot, gardés par l'exe : ST.discordMembers), utilisateurs de Guild Tool,
-// inscrits Raid-Helper, propriétaires de persos ; withMe = moi compris
-function socialPlayers(withMe) {
+// joueurs : membres du serveur Discord (bot, liste gardée par le serveur de la guilde : ST.discordMembers), utilisateurs
+// de Guild Tool, inscrits Raid-Helper, propriétaires de persos ; withMe = moi compris ; serverOnly : seulement la liste
+// du serveur quand elle existe (Settings > Social)
+function socialPlayers(withMe, serverOnly) {
   const me = myId(), out = new Map();
   const add = (id, name, user) => {
     id = String(id || "");
@@ -54,7 +56,9 @@ function socialPlayers(withMe) {
     if (user && !p.user) p.user = user;
     out.set(id, p);
   };
-  for (const p of (ST.discordMembers || {}).players || []) add(p.id, p.name, p.username);
+  const dmp = (ST.discordMembers || {}).players;
+  for (const p of dmp || []) add(p.id, p.name, p.username);
+  if (serverOnly && dmp) return [...out.values()].map(p => ({ ...p, name: p.name || p.user || p.id }));
   for (const g of ST.guildUsers || []) add(g.id, g.n, g.u);
   const evs = (ST.events || []).slice().sort((a, b) => (b.start || 0) - (a.start || 0));
   for (const ev of evs) for (const s of ev.signups || []) add(s.uid, s.n, s.tag);
@@ -119,7 +123,11 @@ function renderSocial() {
   if (!(ST.cloud && ST.cloud.logged && ST.cloud.guild)) {
     box.innerHTML = `<p class="help">${L("Log in with Discord and choose your guild server to use this.")}</p>`; return;
   }
-  if (!SOC && !socLoading) loadSocial();
+  // autre compte ou autre serveur de guilde : notes de celui-ci
+  const who = ((ST.cloud.user || {}).id || "") + "|" + ST.cloud.guild.id;
+  if (SOC && SOC.who !== who) { SOC = null; socAt = 0; }
+  if (!SOC) SOC = { who, scores: { ...(ST.socialScores || {}) } };
+  if (!socLoading && Date.now() - socAt > 15000) loadSocial();
   const open = UI.socialOpen !== false, sort = UI.socialSort || "alpha";
   if (!box.querySelector(".socsec")) {
     box.innerHTML = `<div class="socsec">
@@ -147,7 +155,7 @@ function renderSocialList() {
   }
   const q = (($("#socQ") || {}).value || "").trim().toLowerCase(), chars = socialChars(), sort = UI.socialSort || "alpha";
   const nOf = p => (chars[p.id] || new Set()).size;
-  const list = socialPlayers().filter(p => !q || p.name.toLowerCase().includes(q) || (p.user || "").toLowerCase().includes(q));
+  const list = socialPlayers(false, true).filter(p => !q || p.name.toLowerCase().includes(q) || (p.user || "").toLowerCase().includes(q));
   list.sort((a, b) => (sort === "chars" ? nOf(b) - nOf(a) : 0) || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   const scroll = el.scrollTop;
   el.innerHTML = list.map(p => `<div class="socrow"><span class="socn"><b>${esc(p.name)}</b>${p.user && p.user !== p.name ? `<small>@${esc(p.user)}</small>` : ""}</span>
@@ -155,15 +163,19 @@ function renderSocialList() {
     || `<div class="help">${L(q ? "No player matches." : "No player found yet: Sync first.")}</div>`;
   el.scrollTop = scroll;
 }
-async function loadSocial(force) {
-  socLoading = true;
-  if (force) SOC = null;
-  renderSocialList();
+// notes relues sur le serveur (la liste reste affichée pendant ce temps) ; une note en cours d'envoi garde sa valeur
+async function loadSocial() {
+  socLoading = true; socAt = Date.now();
   const r = await api().social_get();
   socLoading = false;
-  if (r && r.ok !== false) SOC = { scores: r.scores || {} };
-  else if (r && r.error) toast(r.error, true);
-  renderSocial();
+  if (r && r.ok !== false) {
+    const scores = { ...(r.scores || {}) };
+    for (const id of socPending) { if (SOC && SOC.scores[id]) scores[id] = SOC.scores[id]; else delete scores[id]; }
+    SOC = { who: SOC && SOC.who, scores };
+    ST.socialScores = r.scores || {};
+    if (r.pairs) ST.socialPairs = r.pairs;
+  } else if (r && r.error) toast(r.error, true);
+  if ($("#socList")) renderSocial();
 }
 
 document.addEventListener("click", async e => {
@@ -191,13 +203,16 @@ document.addEventListener("click", async e => {
   if (score) SOC.scores[id] = score; else delete SOC.scores[id];
   const seq = socSeq[id] = (socSeq[id] || 0) + 1;
   renderSocialList();
+  socPending.add(id);
   const r = await api().social_set(id, score);
   if (socSeq[id] !== seq) return;
+  socPending.delete(id);
   if (!r || r.ok === false) {
     if (old) SOC.scores[id] = old; else delete SOC.scores[id];
     renderSocialList();
     toast((r && r.error) || "Error", true); return;
   }
+  ST.socialScores = r.scores || ST.socialScores;
   if (r.pairs) { ST.socialPairs = r.pairs; render(); }
 });
 document.addEventListener("input", e => { if (e.target.id === "socQ") renderSocialList(); });
