@@ -5,8 +5,10 @@ stockage personnel du joueur (« personal/<son id>/game/... », visible par lui 
 RCLootCouncil, RaidPlanner) de chaque compte, dossiers des comptes / serveurs / persos et le .toc de l'addon (version).
 La version web en refait une copie locale (dossier /wow) et la relit comme un dossier du jeu.
 
-- manifest.json : {"v": 1, "t": date de l'envoi, "files": {chemin: date de modification en ms}, "dirs": [chemins]}
-- un fichier par chemin, compressé (gzip), nommé d'après le chemin : seuls ceux qui ont changé sont renvoyés / relus
+- manifest.json : {"v": 1, "t": date de l'envoi, "files": {chemin: date de modification en ms}, "h": {chemin: sha1 du
+  contenu}, "dirs": [chemins]}
+- un fichier par chemin, compressé (gzip), nommé d'après le chemin : seuls ceux dont le CONTENU a changé sont renvoyés
+  (le jeu réécrit ses SavedVariables à chaque /reload, souvent à l'identique) puis relus par la version web
 """
 import gzip
 import hashlib
@@ -18,7 +20,7 @@ import time
 SV_FILES = ("GuildTool.lua", "RCLootCouncil.lua", "RaidPlanner.lua")
 TOC = "Interface/AddOns/GuildTool/GuildTool.toc"
 MANIFEST = "game/manifest.json"
-INDEX = ".gtsync.json"          # copie locale (version web) : {"t": date de l'envoi, "files": {chemin: date}}
+INDEX = ".gtsync.json"          # copie locale (version web) : {"t": date de l'envoi, "files": {chemin: sha1 (ou date)}}
 
 
 def _obj(rel):
@@ -58,23 +60,33 @@ def scan(wow):
     return {"files": files, "dirs": dirs}
 
 
-def push(cl, wow, sent):
-    """GuildTool Sync : envoie ce qui a changé depuis le dernier envoi (sent, gardé par l'appelant).
-    Renvoie le nouvel état à garder, None si rien n'a changé."""
+def push(cl, wow, sent, force=False):
+    """GuildTool Sync : envoie ce qui a changé depuis le dernier envoi (sent, gardé par l'appelant). Fichier réécrit
+    (date changée) : relu et comparé au dernier envoyé (sha1), envoyé seulement si son contenu a changé.
+    force : tout renvoyer. Renvoie (état à garder ou None si inchangé, nombre de fichiers envoyés)."""
     cur = scan(wow)
-    mine = sent.get("uid") == cl.user_id
+    mine = sent.get("uid") == cl.user_id and not force
     if mine and sent.get("files") == cur["files"] and sent.get("dirs") == cur["dirs"]:
-        return None
-    old = sent.get("files") if mine else {}
+        return None, 0
+    old_m = (sent.get("files") or {}) if mine else {}
+    old_h = (sent.get("h") or {}) if mine else {}
+    hashes, sent_n = {}, 0
     for rel, m in cur["files"].items():
-        if (old or {}).get(rel) == m:
+        if old_m.get(rel) == m and rel in old_h:
+            hashes[rel] = old_h[rel]
             continue
         with open(os.path.join(wow, *rel.split("/")), "rb") as f:
             data = f.read()
-        cl.personal_upload(_obj(rel), gzip.compress(data, 6), "application/gzip")
-    manifest = {"v": 1, "t": int(time.time()), "files": cur["files"], "dirs": cur["dirs"]}
-    cl.personal_upload(MANIFEST, json.dumps(manifest).encode("utf-8"), "application/json")
-    return {"uid": cl.user_id, "t": manifest["t"], **cur}
+        hashes[rel] = hashlib.sha1(data).hexdigest()
+        if hashes[rel] != old_h.get(rel):
+            cl.personal_upload(_obj(rel), gzip.compress(data, 6), "application/gzip")
+            sent_n += 1
+    t = sent.get("t") if mine else None
+    if sent_n or not mine or set(cur["files"]) != set(old_h) or sent.get("dirs") != cur["dirs"]:
+        t = int(time.time())
+        manifest = {"v": 1, "t": t, "files": cur["files"], "h": hashes, "dirs": cur["dirs"]}
+        cl.personal_upload(MANIFEST, json.dumps(manifest).encode("utf-8"), "application/json")
+    return {"uid": cl.user_id, "t": t, "h": hashes, **cur}, sent_n
 
 
 def pull(cl, wow):
@@ -98,7 +110,8 @@ def pull(cl, wow):
         os.makedirs(os.path.join(wow, *d.split("/")), exist_ok=True)
     for rel, m in man["files"].items():
         p = os.path.join(wow, *rel.split("/"))
-        if have.get(rel) == m and os.path.isfile(p):
+        key = (man.get("h") or {}).get(rel) or m
+        if have.get(rel) == key and os.path.isfile(p):
             continue
         data = cl.personal_download(_obj(rel))
         if data is None:
@@ -107,7 +120,7 @@ def pull(cl, wow):
         with open(p, "wb") as f:
             f.write(gzip.decompress(data))
         os.utime(p, (m / 1000, m / 1000))
-        have[rel] = m
+        have[rel] = key
         changed = True
     # comptes, persos et fichiers qui n'existent plus dans le dossier du jeu
     keep_files = {os.path.join(wow, *r.split("/")) for r in man["files"]}
