@@ -27,7 +27,7 @@ import cloud
 import luaio
 import remote
 
-APP_VERSION = "2.33.0"
+APP_VERSION = "2.34.0"
 # addon du même numéro, joint à chaque release GitHub (package_addon.py) : installé par l'exe (update_addon)
 ADDON_ZIP_URL = "https://github.com/gechar/GuildTool-releases/releases/download/v%s/GuildTool.zip"
 
@@ -381,6 +381,7 @@ def _set_clipboard(text):
 
 class Bridge:
     """Méthodes appelées depuis le JavaScript (window.pywebview.api.*)."""
+    UPDATE_KEY = "lastUpdate"      # config : dernière mise à jour de l'exe tentée (GuildTool Sync a la sienne)
 
     def __init__(self):
         self._lock = threading.RLock()
@@ -3325,11 +3326,15 @@ class Bridge:
                     if sw < 0.5 or sh < 0.5:
                         break
                     v = int(255 * min(1.0, (depth + 1 / N) / t))
-                    box = (cx - sw, cy - sh, cx + sw, cy + sh)
+                    # au pixel près : Pillow 10 (version web) refuse les petites formes arrondies aux coordonnées
+                    # décimales (« x1 must be greater than or equal to x0 »)
+                    bx0, by0 = round(cx - sw), round(cy - sh)
+                    box = (bx0, by0, max(bx0, round(cx + sw)), max(by0, round(cy + sh)))
                     if f["shape"] == "circle":
                         d.ellipse(box, fill=v)
                     else:
-                        d.rounded_rectangle(box, radius=min(feather * (1 - depth), sw, sh), fill=v)
+                        radius = max(0, min(int(feather * (1 - depth)), (box[2] - box[0]) // 2, (box[3] - box[1]) // 2))
+                        d.rounded_rectangle(box, radius=radius, fill=v)
                 m = m.filter(ImageFilter.GaussianBlur(max(2.0, feather / 4 * k))).crop((P, P, P + S, P + S))
                 m = m.point(lambda v: 255 - v)   # la forme disparaît, le reste est gardé
                 png = Image.new("RGBA", (S, S), (255, 255, 255, 0))
@@ -3676,12 +3681,13 @@ class Bridge:
             webbrowser.open(up["url"])
             return {"ok": True, "manual": True}
         folder = os.path.dirname(exe)
-        new = os.path.join(folder, "GuildTool.new.exe")
+        stem = os.path.splitext(os.path.basename(exe))[0]       # GuildTool, ou GuildToolSync (sync.py)
+        new = os.path.join(folder, stem + ".new.exe")
         # garde-fou : la même version vient d'être installée et on tourne toujours sur l'ancienne (remplacement raté)
         # -> page de téléchargement au lieu de recommencer en boucle
-        last = self._config.get("lastUpdate") or {}
+        last = self._config.get(self.UPDATE_KEY) or {}
         if last.get("version") == up["version"] and time.time() - (last.get("t") or 0) < 600:
-            self._config.pop("lastUpdate", None)
+            self._config.pop(self.UPDATE_KEY, None)
             _save(CONFIG_PATH, self._config)
             webbrowser.open(up["url"])
             return {"ok": True, "manual": True, "error": "The previous update could not replace the app: download it manually."}
@@ -3691,7 +3697,7 @@ class Bridge:
                 shutil.copyfileobj(r, f)
             if os.path.getsize(new) < 1_000_000:
                 raise RuntimeError("download incomplete")
-            bat = os.path.join(folder, "GuildTool_update.bat")
+            bat = os.path.join(folder, stem + "_update.bat")
             # Chemins passés par variables d'environnement (Unicode) : écrits dans le .bat en ASCII, un accent du
             # chemin devenait « ? » et le move échouait (l'ancien exe relancé redemandait la mise à jour).
             # Exe PyInstaller « onefile » = 2 processus : on attend aussi le lanceur (parent), qui verrouille l'exe ;
@@ -3725,7 +3731,7 @@ class Bridge:
         env.update({"PYINSTALLER_RESET_ENVIRONMENT": "1", "GT_PID": str(os.getpid()), "GT_PPID": str(os.getppid()),
                     "GT_IMG": os.path.basename(exe), "GT_NEW": new, "GT_EXE": exe})
         subprocess.Popen(["cmd", "/c", bat], creationflags=0x08000000, env=env, cwd=folder)   # CREATE_NO_WINDOW
-        self._config["lastUpdate"] = {"version": up["version"], "t": time.time()}
+        self._config[self.UPDATE_KEY] = {"version": up["version"], "t": time.time()}
         _save(CONFIG_PATH, self._config)
         self._presence(out=True)
         threading.Timer(0.5, lambda: webview.windows[0].destroy()).start()
@@ -3782,6 +3788,8 @@ class Bridge:
 
 
 def main():
+    # tant que l'appli est ouverte, GuildTool Sync (sync.py, mêmes données dans APP_DIR) se met en pause
+    app_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\GuildToolApp")   # noqa: F841 (gardé ouvert)
     bridge = Bridge()
     index = os.path.join(BASE_DIR, "web", "index.html")
     # fenêtre sans cadre Windows : la barre du haut de l'interface sert de poignée (classe pywebview-drag-region,

@@ -352,6 +352,26 @@ class Cloud:
               headers={"apikey": self.conf["anonKey"], "Authorization": "Bearer " + self.access(),
                        "Content-Type": "image/jpeg", "x-upsert": "true"}, method="POST", timeout=120)
 
+    # ---------------------------------------------------------- fichiers personnels (« personal/<mon id>/... »)
+    # visibles par moi seul (règles du stockage) : SavedVariables envoyées par GuildTool Sync, lues par la version web
+    def _personal(self, rel, kind=""):
+        return "%s/storage/v1/object/%spersonal/%s/%s" % (self.conf["url"], kind, self.user_id, urllib.parse.quote(rel))
+
+    def personal_upload(self, rel, data, ctype="application/octet-stream"):
+        _http(self._personal(rel), raw=data, method="POST", timeout=120,
+              headers={"apikey": self.conf["anonKey"], "Authorization": "Bearer " + self.access(),
+                       "Content-Type": ctype, "x-upsert": "true"})
+
+    def personal_download(self, rel):
+        """Contenu du fichier, None s'il n'existe pas."""
+        try:
+            return _http(self._personal(rel, "authenticated/") + "?t=%d" % time.time(), binary=True, timeout=120,
+                         headers={"apikey": self.conf["anonKey"], "Authorization": "Bearer " + self.access()})
+        except CloudError as e:
+            if "not found" in str(e).lower().replace("_", " "):
+                return None
+            raise
+
     # ---------------------------------------------------------- mise à jour de l'exe
     def releases_url(self, name, base=None):
         base = base or self.conf.get("releases") or GITHUB_RELEASES

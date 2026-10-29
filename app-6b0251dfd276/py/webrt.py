@@ -6,7 +6,8 @@ le navigateur (Pyodide, dans un Web Worker). Ce module remplace ce qui n'existe 
 - threads : threading.Thread / Timer -> setTimeout (un seul fil d'exécution, les appels sont mis en file)
 - session : pas de DPAPI (chiffrement Windows), elle reste dans le stockage du site (IndexedDB)
 - connexion Discord : redirection de la page (login_url / finish_login de cloud.py) au lieu du petit serveur local
-- dossier du jeu : copie dans /wow (lecture), fichiers de l'addon écrits renvoyés par le Worker (dossier lié ou export)
+- dossier du jeu : copie dans /wow (lecture), fichiers de l'addon écrits renvoyés par le Worker (dossier lié ou export) ;
+  ou données du jeu envoyées au serveur par GuildTool Sync (mode « cloud », gamesync.py), qui écrit lui-même l'addon
 """
 import email
 import io
@@ -25,8 +26,9 @@ from pyodide.ffi import create_proxy, to_js
 WOW = "/wow"
 os.environ["GUILDTOOL_HOME"] = "/appdata/GuildTool"
 
-# état fourni par le Worker : chemin du fichier choisi dans la page (dialogue), dossier lié en écriture, adresse du site
-state = {"dialog": None, "linked": False, "base": ""}
+# état fourni par le Worker : chemin du fichier choisi dans la page (dialogue), dossier lié en écriture, adresse du site,
+# mode du dossier du jeu (« linked », « import », « cloud » = GuildTool Sync)
+state = {"dialog": None, "linked": False, "base": "", "mode": ""}
 
 
 def effect(kind, **data):
@@ -176,6 +178,7 @@ sys.path.insert(0, "/app")
 import cloud    # noqa: E402
 import remote   # noqa: E402
 import app      # noqa: E402
+import gamesync  # noqa: E402
 
 cloud._dpapi = lambda data, encrypt: bytes(data)
 cloud.Cloud.latest_version = lambda self: None          # le site est toujours à jour : pas de mise à jour d'exe
@@ -211,6 +214,10 @@ def update_addon(self):
 
 
 B.update_addon = update_addon
+_process_queue, _process_grants = B._process_queue, B._process_grants
+# GuildTool Sync : c'est lui qui fait les inscriptions et droits d'officier demandés en jeu (une seule fois)
+B._process_queue = lambda self: None if state["mode"] == "cloud" else _process_queue(self)
+B._process_grants = lambda self: None if state["mode"] == "cloud" else _process_grants(self)
 
 
 def web_login_start(self, redirect):
@@ -260,6 +267,24 @@ def call(name, args_json):
     if not callable(fn):
         raise AttributeError("Unknown function: %s" % name)
     return json.dumps(fn(*json.loads(args_json)), ensure_ascii=False, default=str)
+
+
+def cloud_pull():
+    """Mode GuildTool Sync : copie /wow mise à jour d'après le dernier envoi -> JSON {ok, t, changed} ou {ok: False, error}."""
+    cl = bridge._cloud
+    if not cl.logged:
+        return json.dumps({"ok": False, "error": "Log in with Discord first, then choose GuildTool Sync again."})
+    try:
+        r = gamesync.pull(cl, WOW)
+    except Exception as e:
+        traceback.print_exc()
+        return json.dumps({"ok": False, "error": str(e)})
+    if r is None:
+        return json.dumps({"ok": False, "none": True, "error": "No game data from GuildTool Sync yet: start it, log in with "
+                           "Discord from its icon next to the clock, then try again."})
+    if r["changed"]:
+        bridge.web_remount()
+    return json.dumps({"ok": True, **r})
 
 
 def set_dialog(path):

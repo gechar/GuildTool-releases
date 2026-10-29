@@ -1,6 +1,6 @@
 {
- "version": "2.33.0",
- "build": "20261028005514",
+ "version": "2.34.0",
+ "build": "20261029000808",
  "files": [
   {
    "url": "py/app.py",
@@ -17,6 +17,10 @@
   {
    "url": "py/luaio.py",
    "path": "luaio.py"
+  },
+  {
+   "url": "py/gamesync.py",
+   "path": "gamesync.py"
   },
   {
    "url": "py/cloud.json",

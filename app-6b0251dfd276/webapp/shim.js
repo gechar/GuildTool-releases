@@ -3,12 +3,15 @@
 // tourner l'appli Python de l'exe (worker.js) ; ce qui demande la page (dialogues de fichiers, connexion Discord,
 // presse-papier, liens) est fait ici. Le dossier du jeu est soit LIÉ (Chrome / Edge : lu et écrit directement, accès
 // redemandé à chaque visite par le navigateur), soit IMPORTÉ (tous les navigateurs, et les dossiers que Chrome refuse
-// comme C:\Program Files) : copie relue à la demande, fichiers de l'addon téléchargés pour être recopiés à la main.
+// comme C:\Program Files) : copie relue à la demande, fichiers de l'addon téléchargés pour être recopiés à la main ;
+// soit envoyé au serveur par GuildTool Sync (petit exe près de l'horloge, qui écrit aussi l'addon) : rien à choisir.
 window.GT_WEB = true;
 (function () {
   const BASE = location.origin + location.pathname.replace(/[^/]*$/, "");
   const REDIRECT = location.origin + location.pathname;
   const FOLDER_ICO = '<svg viewBox="0 0 24 24"><path d="M3 6.5h6l2 2h10v10H3z"/></svg>';
+  const CLOUD_ICO = '<svg viewBox="0 0 24 24"><path d="M7 18.5h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.6 9.1 4.75 4.75 0 0 0 7 18.5z"/></svg>';
+  const SYNC_EXE = "https://github.com/gechar/GuildTool-releases/releases/latest/download/GuildToolSync.exe";
   Object.assign(FR, {
     "Loading Guild Tool…": "Chargement de Guild Tool…", "Loading Python…": "Chargement de Python…",
     "Loading image tools…": "Chargement des outils d'image…", "Loading your data…": "Chargement de tes données…",
@@ -37,6 +40,16 @@ window.GT_WEB = true;
     "Extract {0} into Interface\\AddOns (it holds the GuildTool folder), then /reload in game.": "Extrais {0} dans Interface\\AddOns (il contient le dossier GuildTool), puis /reload en jeu.",
     "Addon {0}": "Addon {0}", "Download the Guild Tool addon {0}: extract it into Interface\\AddOns, then restart the game": "Télécharge l'addon Guild Tool {0} : extrais-le dans Interface\\AddOns, puis relance le jeu",
     "Login expired: try again.": "Connexion expirée : recommence.",
+    "Use GuildTool Sync": "Utiliser GuildTool Sync", "Download GuildTool Sync": "Télécharger GuildTool Sync",
+    "Nothing to choose: GuildTool Sync, a small Windows app that runs next to the clock, sends your game data to the guild server and writes the file of the addon, even when this page is closed. Works with every browser and with C:\\Program Files. Log in with Discord in it and here.":
+      "Rien à choisir : GuildTool Sync, une petite appli Windows qui tourne près de l'horloge, envoie tes données du jeu au serveur de la guilde et écrit le fichier de l'addon, même quand cette page est fermée. Marche avec tous les navigateurs et avec C:\\Program Files. Connecte-toi avec Discord dedans et ici.",
+    "Log in with Discord first, then choose GuildTool Sync again.": "Connecte-toi d'abord avec Discord, puis choisis de nouveau GuildTool Sync.",
+    "No game data from GuildTool Sync yet: start it, log in with Discord from its icon next to the clock, then try again.":
+      "Pas encore de données du jeu venant de GuildTool Sync : lance-le, connecte-toi avec Discord depuis son icône près de l'horloge, puis réessaie.",
+    "game data of {0}": "données du jeu du {0}",
+    "Game data sent by GuildTool Sync (the small app next to the clock), read again every 20 s. It also writes the file of the addon: /reload in game to load the changes.":
+      "Données du jeu envoyées par GuildTool Sync (la petite appli près de l'horloge), relues toutes les 20 s. Il écrit aussi le fichier de l'addon : /reload en jeu pour charger les changements.",
+    "Game data from GuildTool Sync.": "Données du jeu venant de GuildTool Sync.",
   });
   const T = (s, ...a) => L(s, ...a);
   const escH = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -135,6 +148,12 @@ window.GT_WEB = true;
     if (m.ok) await kvDel("wow");
     return m;
   }
+  // GuildTool Sync : données du jeu lues sur le serveur, plus de dossier lié ni de copie à garder
+  async function mountCloud() {
+    const m = await send({ type: "mount", mode: "cloud" });
+    if (m.ok) await kvDel("wow");
+    return m;
+  }
   function chooseFolder() {
     return new Promise(resolve => {
       const g = document.createElement("div");
@@ -142,9 +161,12 @@ window.GT_WEB = true;
       const canLink = "showDirectoryPicker" in window;
       g.innerHTML = `<div class="gatebox wfbox"><h2>${T("World of Warcraft folder")}</h2>
         <p>${T("Choose your game version folder: the one that contains WTF and Interface (for example _forever_).")}</p>
-        ${canLink ? `<div class="wfopt"><button class="btn pri" data-wflink="1">${T("Link the folder")}</button>
+        <div class="wfopt"><button class="btn pri" data-wfcloud="1">${T("Use GuildTool Sync")}</button>
+          <div class="help">${escH(T("Nothing to choose: GuildTool Sync, a small Windows app that runs next to the clock, sends your game data to the guild server and writes the file of the addon, even when this page is closed. Works with every browser and with C:\\Program Files. Log in with Discord in it and here."))}
+          <a href="${SYNC_EXE}" target="_blank" rel="noopener">${T("Download GuildTool Sync")}</a></div></div>
+        ${canLink ? `<div class="wfopt"><button class="btn" data-wflink="1">${T("Link the folder")}</button>
           <div class="help">${escH(T("Reads your game data and writes the file of the addon directly, like the app. Chrome and Edge only: the browser asks for access once per visit (or choose « Allow on every visit »)."))}</div></div>` : ""}
-        <div class="wfopt"><button class="btn${canLink ? "" : " pri"}" data-wfimport="1">${T("Import a copy")}</button>
+        <div class="wfopt"><button class="btn" data-wfimport="1">${T("Import a copy")}</button>
           <div class="help">${escH(T("Every browser, and folders that Chrome and Edge refuse (inside C:\\Program Files). The game data is a copy: import again after playing. Changes for the addon are downloaded: copy them into Interface\\AddOns\\GuildTool, then /reload."))}</div></div>
         <p class="ko" id="wfErr" hidden></p>
         <button class="btn" data-wfcancel="1">${T("Cancel")}</button></div>`;
@@ -156,7 +178,11 @@ window.GT_WEB = true;
         if (box.classList.contains("busy")) return;
         if (e.target.closest("[data-wfcancel]")) { done({ ok: true, path: null }); return; }
         let m = null;
-        if (e.target.closest("[data-wflink]")) {
+        if (e.target.closest("[data-wfcloud]")) {
+          box.classList.add("busy"); err.hidden = true;
+          m = await mountCloud();
+          if (!m.ok) m.error = T(m.error);
+        } else if (e.target.closest("[data-wflink]")) {
           let h;
           try { h = await window.showDirectoryPicker({ id: "gtwow", mode: "readwrite" }); }
           catch (x) { fail(x.name === "AbortError" ? T("No folder linked. If the browser refused it (folder inside C:\\Program Files), use « Import a copy ».") : x.message); return; }
@@ -211,6 +237,13 @@ window.GT_WEB = true;
     let p = document.getElementById("webWow");
     if (!files.mode) { if (p) p.remove(); return; }
     if (!p) { p = document.createElement("div"); p.id = "webWow"; document.body.appendChild(p); }
+    const when = files.t ? new Date(files.t).toLocaleString(LOC(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    if (files.mode === "cloud") {
+      p.className = "";
+      p.innerHTML = `<span class="wwl" data-help="${escH(T("Game data sent by GuildTool Sync (the small app next to the clock), read again every 20 s. It also writes the file of the addon: /reload in game to load the changes."))}">${CLOUD_ICO}${escH(files.label)}</span>
+        <span class="wwt">${T("game data of {0}", when)}</span>`;
+      return;
+    }
     const label = `<span class="wwl">${FOLDER_ICO}${escH(files.label)}</span>`;
     if (files.mode === "linked") {
       p.className = files.connected ? "" : "warn";
@@ -220,7 +253,6 @@ window.GT_WEB = true;
       return;
     }
     p.className = "";
-    const when = files.t ? new Date(files.t).toLocaleString(LOC(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
     const one = files.pending.length === 1 ? files.pending[0].split("/").pop() : "GuildTool.zip";
     p.innerHTML = `${label}<span class="wwt" data-help="${escH(T("Copy of your game folder: import it again after playing to read your new game data"))}">${T("copy of {0}", when)}</span>
       <button data-wwre="1">${T("Import again")}</button>
@@ -294,6 +326,8 @@ window.GT_WEB = true;
         <button class="btn pri" onclick="location.reload()">${T("Reload")}</button>`);
       return;
     }
+    // aucun dossier choisi sur ce navigateur : données du jeu de GuildTool Sync si le joueur l'utilise
+    if (!files.mode) { try { await mountCloud(); } catch (e) { /* pas connecté ou pas de GuildTool Sync */ } }
     let logged = null;
     if (code) {
       let v = null;
@@ -309,6 +343,7 @@ window.GT_WEB = true;
       for (let i = 0; i < 300 && !ST; i++) await new Promise(r => setTimeout(r, 100));
       if (!logged.ok) { toast(logged.error, true); return; }
       toast(L("Logged in with Discord."));
+      if (!files.mode && (await mountCloud()).ok) { toast(T("Game data from GuildTool Sync.")); reload(); }
       if (ST.cloud && ST.cloud.guild) doSync();
       openSetupGate();
     }

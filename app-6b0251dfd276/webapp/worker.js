@@ -6,6 +6,8 @@
 // (GuildTool, RCLootCouncil), dossiers des comptes / serveurs / persos, et de l'addon le .toc (version) et la liste des
 // images (fichiers vides : l'appli ne fait que tester leur présence). Ce que l'appli écrit dans le dossier de l'addon
 // (Import.lua, images) est recopié dans le vrai dossier (dossier lié), sinon proposé au téléchargement (copie importée).
+// Mode « cloud » : pas de dossier, les données du jeu viennent du serveur où GuildTool Sync (petit exe près de
+// l'horloge) les envoie ; c'est lui qui écrit l'addon, rien n'est recopié d'ici.
 const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/";
 importScripts(PYODIDE + "pyodide.js");
 
@@ -18,10 +20,11 @@ const STATE = "/appdata/web_state.json";
 
 let py, FS, rt;            // Pyodide, son système de fichiers, module webrt
 let src = null;            // dossier du jeu de cette session : {mode, root (dossier lié), sv: [{rel, handle, t}]}
-// mode « linked » | « import », nom du dossier, date de la copie ; known = {fichier de l'addon: date} ;
+// mode « linked » | « import » | « cloud », nom du dossier, date de la copie ; known = {fichier de l'addon: date} ;
 // pending = fichiers de l'addon changés par l'appli, pas encore recopiés dans le vrai dossier
 let ws = { mode: "", label: "", t: 0, known: {}, pending: {} };
 let queue = Promise.resolve();
+let lastPull = 0;           // mode cloud : dernière relecture des données envoyées par GuildTool Sync
 
 const post = (m, transfer) => postMessage(m, transfer || []);
 const progress = text => post({ type: "progress", text });
@@ -63,7 +66,7 @@ async function persist() {
 }
 
 function status() {
-  return { type: "files", mode: ws.mode, label: ws.label, t: ws.t, connected: !!(src && src.root),
+  return { type: "files", mode: ws.mode, label: ws.label, t: ws.t, connected: !!(src && src.root) || ws.mode === "cloud",
            pending: Object.keys(ws.pending).filter(r => exists(ADDON + "/" + r)) };
 }
 const notify = () => post(status());
@@ -175,8 +178,31 @@ async function listImport(files) {
   }
   return { out, label: (root || "").split("/").pop() || "WoW" };
 }
+// mode cloud : /wow mis à jour d'après le serveur (gamesync.py) ; first = passage à ce mode (tout est relu)
+function cloudPull(first) {
+  if (first && ws.mode !== "cloud") { try { FS.unlink("/wow/.gtsync.json"); } catch (e) { /* pas de copie */ } }
+  lastPull = Date.now();
+  const r = JSON.parse(rt.cloud_pull());
+  if (r.ok) ws.t = r.t * 1000;
+  return r;
+}
+async function mountCloud() {
+  if (!rt) throw new Error("Guild Tool is still starting.");
+  progress("Reading your game data…");
+  const r = cloudPull(true);
+  if (!r.ok) throw new Error(r.error);
+  ws.mode = "cloud"; ws.label = "GuildTool Sync"; ws.known = {}; ws.pending = {};
+  src = null;
+  rt.state.set("mode", "cloud");
+  rt.state.set("linked", false);
+  rt.call("web_remount", "[]");
+  await persist();
+  notify();
+  return { root: null, label: ws.label };
+}
 // /wow refait d'après le dossier choisi ; les fichiers de l'addon pas encore recopiés restent ceux de l'appli
 async function mount(m) {
+  if (m.mode === "cloud") return mountCloud();
   let entries, root = null, label;
   const sv = [];
   if (m.mode === "linked") {
@@ -204,6 +230,7 @@ async function mount(m) {
   src = { mode: m.mode, root, sv };
   if (rt) {
     rt.state.set("linked", m.mode === "linked");
+    rt.state.set("mode", m.mode);
     rt.call("web_remount", "[]");
     scan();
   }
@@ -262,7 +289,7 @@ async function flush() {
 }
 async function afterCall() {
   if (!rt) return;
-  if (scan()) await flush();
+  if (ws.mode !== "cloud" && scan()) await flush();
   await persist();
   notify();
 }
@@ -289,8 +316,10 @@ async function boot(m) {
   rt = py.pyimport("webrt");
   rt.state.set("base", m.base);
   rt.state.set("linked", ws.mode === "linked");
+  rt.state.set("mode", ws.mode);
   progress("Reading your game data…");
   rt.boot();
+  if (ws.mode === "cloud") { try { cloudPull(false); } catch (e) { console.warn("Guild Tool: game data", e); } }
   await afterCall();
 }
 function pyError(e) {
@@ -336,6 +365,10 @@ async function handle(m) {
   } else if (m.type === "export") {
     exportFiles(m);
   } else if (m.type === "tick") {
+    // mode cloud : nouvelles données du jeu envoyées par GuildTool Sync (toutes les 20 s)
+    if (rt && ws.mode === "cloud" && Date.now() - lastPull > 20000) {
+      try { cloudPull(false); } catch (e) { console.warn("Guild Tool: game data", e); }
+    }
     await afterCall();          // écritures faites en arrière-plan (minuteries de l'appli)
   }
 }
