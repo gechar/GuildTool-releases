@@ -536,17 +536,12 @@ function loadPhases() {
   if (UI.phase >= PHASES.length) UI.phase = PHASES.length - 1;
 }
 
-// Sélecteur de phase : jusqu'à 5 numéros, celui du milieu est la phase choisie (perspective : les voisins rétrécissent)
-// onglet Loots : même sélecteur, propre à l'onglet, « All » après la dernière phase (toutes) ; ne change pas la phase de la guilde
+// Sélecteur de phase de la guilde (Raid Comps) : mêmes cases que les autres (phaseBtns), sans « ALL »
+// onglet Loots : son propre sélecteur, « All » après la dernière phase (toutes) ; ne change pas la phase de la guilde
 const lootPhaseIdx = () => UI.lootPhase === null || UI.lootPhase === undefined || UI.lootPhase >= PHASES.length ? PHASES.length : UI.lootPhase;
 function renderPhaseWheel() {
-  const loots = UI.page === "loots", cur = loots ? lootPhaseIdx() : UI.phase, max = loots ? PHASES.length : PHASES.length - 1;
-  let html = "";
-  for (let d = -2; d <= 2; d++) {
-    const i = cur + d;
-    html += i >= 0 && i <= max ? `<button class="phn d${Math.abs(d)}${i === PHASES.length ? " all" : ""}" data-phase="${i}">${i === PHASES.length ? L("All") : i + 1}</button>` : '<span class="phn d9"></span>';
-  }
-  $("#phaseNums").innerHTML = html;
+  const loots = UI.page === "loots";
+  $("#phaseNums").innerHTML = phaseBtns(loots ? lootPhaseIdx() : UI.phase, "data-phase", loots ? PHASES.length : PHASES.length - 1);
 }
 function setPhase(i) {
   if (UI.page === "loots") {
@@ -562,8 +557,8 @@ function setPhase(i) {
   render();
 }
 // onglet Loots : vues affichées comme des onglets (même surbrillance que les onglets généraux)
-// History en dernier (comme dans l'addon)
-const LOOT_VIEWS = [["role", "Compare"], ["boss", "Tables"], ["all", "History"], ["wish", "Wishlist"], ["bis", "Bislist"]];
+// ordre : Tables, Wishlist, Bislist, Compare, History
+const LOOT_VIEWS = [["boss", "Tables"], ["wish", "Wishlist"], ["bis", "Bislist"], ["role", "Compare"], ["all", "History"]];
 // réglage de la guilde (officiers) : caché aux membres
 const lootFlag = k => !isOfficerUser() && !!(ST.guildFlags || {})[k];
 const LOOT_VIEW_FLAG = { role: "lootHideCompare", all: "lootHideHistory" };
@@ -574,11 +569,11 @@ function renderViewBtns() {
 }
 // Sélecteur de phase (Loots, assiduité des Members, Logs) : 5 cases au plus, la choisie au milieu en blanc, une de
 // chaque côté normale, la 2e de chaque côté estompée ; « P1 », « P2 »… puis « ALL » après la dernière (attr = data-…)
-function phaseBtns(cur, attr) {
+function phaseBtns(cur, attr, max = PHASES.length) {
   let ph = "";
   for (let d = -2; d <= 2; d++) {
     const i = cur + d;
-    ph += i >= 0 && i <= PHASES.length ? `<button class="aphb${i === cur ? " on" : ""}${Math.abs(d) === 2 ? " far" : ""}" ${attr}="${i}">${i === PHASES.length ? L("ALL") : "P" + (i + 1)}</button>` : '<span class="aphb ph0"></span>';
+    ph += i >= 0 && i <= max ? `<button class="aphb${i === cur ? " on" : ""}${Math.abs(d) === 2 ? " far" : ""}" ${attr}="${i}">${i === PHASES.length ? L("ALL") : "P" + (i + 1)}</button>` : '<span class="aphb ph0"></span>';
   }
   return ph;
 }
@@ -1136,6 +1131,7 @@ function renderCalendar() {
   const end = new Date(Math.floor(max / 100), max % 100 + 1, 0, 12);
   const today = ymd(now()), byDay = {}, absDay = absentsByDay();
   for (const ev of sortedEvents()) (byDay[ymd(ev.start)] = byDay[ymd(ev.start)] || []).push(ev);
+  for (const k in byDay) byDay[k].sort(dayEvOrder);
   let head = '<div class="cal-head">';
   for (let d = 0; d < 7; d++) head += `<span>${new Date(2026, 0, 5 + d).toLocaleString(LOC(), { weekday: "long" })}</span>`;
   head += "</div>";
@@ -1227,6 +1223,8 @@ function evBarCls(ev) {
   const archived = ev.chId === mainArchive() || ev.chId === commuArchive() || ev.start < weekStart(Math.floor(Date.now() / 1000));
   return (isCommuEvent(ev) ? " commu" : "") + (archived ? (isCommuEvent(ev) ? " carch" : " march") : "");
 }
+// ordre des events d'un jour (case et menu du survol) : à l'heure ; même heure : Main Raid d'abord, puis par id
+const dayEvOrder = (x, y) => x.start - y.start || isMainEvent(y) - isMainEvent(x) || String(x.id).localeCompare(String(y.id));
 function dayMenu(day, ts, evs) {
   const a = calAct && calAct.day === day ? calAct : null;
   const field = (step, ph, val) => `<div class="dbtn form"><input class="dinput" data-dstep="${step}" placeholder="${esc(L(ph))}" value="${esc(val || "")}" spellcheck="false"></div>`;
@@ -1238,8 +1236,8 @@ function dayMenu(day, ts, evs) {
   // 3. Raid Comps de ce lockout ; les trois sur une ligne, icônes seules (le survolé s'élargit et montre son nom)
   else h += `<div class="dpair dtrio">${isOfficerUser() ? `<button class="dbtn" data-dact="note">${NOTE_SVG}<span>${L("Note")}</span></button>` : ""}${evBtn}`
     + `<button class="dbtn" data-dcomps="${ts}" data-help="Open the Raid Comps of this lockout.">${COMPS_SVG}<span>${L("Raid Comps")}</span></button></div>`;
-  // 4+. events du jour : Main Raid d'abord, puis à l'heure
-  const list = evs.slice().sort((x, y) => (isMainEvent(y) - isMainEvent(x)) || x.start - y.start);
+  // 4+. events du jour : même ordre que dans la case (heure, puis Main Raid d'abord à la même heure)
+  const list = evs.slice().sort(dayEvOrder);
   for (const ev of list) {
     const tm = new Date(ev.start * 1000).toLocaleTimeString(LOC(), { hour: "2-digit", minute: "2-digit" });
     // clic : fenêtre de réaction (inscription, absence…) ; officiers : modifier / supprimer

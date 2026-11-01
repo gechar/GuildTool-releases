@@ -155,12 +155,28 @@ function bisRecap(x, set, tals) {
 }
 
 // ---------------------------------------------------------------- données (guilde)
-const bisData = key => { const d = (ST.bis || {})[key] || {}; return { ep: d.ep || {}, talents: d.talents || {}, sets: d.sets && d.sets.length ? d.sets : [{ n: "Bis", g: {} }],
-  editors: Array.isArray(d.editors) ? d.editors.map(String) : [] }; };
+// Sets propres à chaque phase (ph : {phase: [sets]}) : phase du sélecteur de Loots, « ALL » = phase de la guilde ;
+// phase sans sets : ceux de la phase précédente qui en a, sinon les anciens sets communs (sets), copiés au 1er changement.
+// Set renommé (c : nom choisi, « situationnel ») : rangé après les Bis, qui gardent leur nom automatique (Bis, Bis 2…).
+const bisPhase = () => { const p = lootPhaseIdx(); return p < PHASES.length ? p : Math.max(0, Math.min(UI.phase || 0, PHASES.length - 1)); };
+function bisPhaseSets(d, p) {
+  const ph = d.ph || {};
+  for (let i = p; i >= 0; i--) if (Array.isArray(ph[i]) && ph[i].length) return JSON.parse(JSON.stringify(ph[i]));
+  return d.sets && d.sets.length ? JSON.parse(JSON.stringify(d.sets)) : [{ n: "Bis", g: {} }];
+}
+const bisData = key => { const d = (ST.bis || {})[key] || {}, p = bisPhase();
+  return { ep: d.ep || {}, talents: d.talents || {}, sets: bisPhaseSets(d, p), p, ph: d.ph || {}, legacy: d.sets || [],
+           editors: Array.isArray(d.editors) ? d.editors.map(String) : [] }; };
+const bisSetName = (sets, i) => sets[i].c ? sets[i].n : ((k => k ? "Bis " + (k + 1) : "Bis")(sets.slice(0, i).filter(x => !x.c).length));
+// Bis d'abord, sets renommés ensuite (ordre gardé dans chaque groupe) ; renvoie la nouvelle place du set « keep »
+function bisSortSets(d, keep) {
+  d.sets = d.sets.filter(x => !x.c).concat(d.sets.filter(x => x.c));
+  return Math.max(0, d.sets.indexOf(keep));
+}
 let bisTimer = null;
 function bisSave(key, d) {
   ST.bis = ST.bis || {};
-  ST.bis[key] = { ...d, t: Math.floor(Date.now() / 1000) };
+  ST.bis[key] = { ep: d.ep, talents: d.talents, editors: d.editors, sets: d.legacy, ph: { ...d.ph, [d.p]: d.sets }, t: Math.floor(Date.now() / 1000) };
   clearTimeout(bisTimer);
   bisTimer = setTimeout(async () => { const r = await api().bis_save(key, ST.bis[key]); if (r && r.ok === false) toast(r.error, true); }, 400);
 }
@@ -268,8 +284,11 @@ function renderLootBis() {
   const paper = `<div class="bispaper"><div class="pcol">${left.map(slotHtml).join("")}</div>${recap}<div class="pcol">${right.map(slotHtml).join("")}</div><div class="pbot">${GEAR_BOTTOM.map(slotHtml).join("")}</div></div>`;
   ensureItems(ids);
   // sets
-  const sets = `<div class="bissets"><select class="lootsel" id="bisSetSel">${d.sets.map((s, i) => `<option value="${i}"${i === si ? " selected" : ""}>${esc(s.n || (i ? "Bis " + (i + 1) : "Bis"))}</option>`).join("")}</select>`
-    + (ed ? `<button class="ib" data-bisset="add" data-help="Add a set">+</button>${d.sets.length > 1 ? `<button class="ib" data-bisset="del" data-help="Delete this set">×</button>` : ""}` : "") + `</div>`;
+  const phName = PHASES[d.p] ? PHASES[d.p].name || L("Phase {0}", d.p + 1) : "";
+  const sets = `<div class="bissets">${bisRen ? `<input class="lootsel" id="bisSetName" value="${esc(set.c ? set.n : "")}" placeholder="${esc(L("Name (empty: Bis)"))}" maxlength="30" spellcheck="false">`
+      : `<select class="lootsel" id="bisSetSel" data-help="${esc(L("Sets of {0} (phase selector above)", phName))}">${d.sets.map((s, i) => `<option value="${i}"${i === si ? " selected" : ""}>${esc(bisSetName(d.sets, i))}</option>`).join("")}</select>`}`
+    + (ed ? `<button class="ib" data-bisset="ren" data-help="Rename this set (situational set: listed after the Bis sets) · empty name: Bis">✎</button><button class="ib" data-bisset="add" data-help="Add a set">+</button>${d.sets.length > 1 ? `<button class="ib" data-bisset="del" data-help="Delete this set">×</button>` : ""}` : "")
+    + `<button class="btn small" data-bisio="1" data-help="Gear and talents of this set as WoWSims JSON (wowsims.com/forever): copy to export, paste another one to import">${L("Import / Export")}</button></div>`;
   // talents
   const t = bisTalentsHtml(x, tals, ed);
   const own = !!(set && set.own);
@@ -282,7 +301,78 @@ function renderLootBis() {
       <div class="bistal tpanel">${talHead}${t.html}${ed ? `<div class="mute bishelp">${L("Click: +1 · right-click: -1")}</div>` : ""}</div>
     </div></div>`;
   if (bisPick) bisFillPick();
+  if (bisRen) { const i = $("#bisSetName"); if (i) { i.focus(); i.select(); } }
 }
+
+// ---------------------------------------------------------------- WoWSims (JSON de wowsims.com/forever)
+// equipment.items : 17 cases dans l'ordre de WoWSims (tête, cou, épaules, dos, torse, poignets, mains, taille, jambes,
+// pieds, doigt 1 et 2, bijou 1 et 2, main droite, main gauche, distance) ; talentsString : WS_TALENTS (wsimsref.js)
+const WS_SLOTS = [1, 2, 3, 15, 5, 9, 10, 6, 7, 8, 11, 12, 13, 14, 16, 17, 18];
+const wsClass = cls => "Class" + cls.charAt(0) + cls.slice(1).toLowerCase();
+let bisRen = false;
+function bisExport() {
+  const { x, d, si, set } = bisCur(), tals = bisTalentsOf(d, set), trees = WS_TALENTS[x.cls] || [];
+  const talentsString = trees.map(t => t.map(s => Math.min(9, +tals[s] || 0)).join("").replace(/0+$/, "")).join("-");
+  return JSON.stringify({ apiVersion: 2, player: { apiVersion: 2, name: bisSetName(d.sets, si), class: wsClass(x.cls),
+    equipment: { items: WS_SLOTS.map(sl => set.g && set.g[sl] ? { id: +set.g[sl] } : {}) }, talentsString } }, null, 2);
+}
+// null si importé, sinon le message d'erreur
+function bisImport(txt) {
+  let j;
+  try { j = JSON.parse(txt); } catch (e) { return L("Not a WoWSims JSON."); }
+  const pl = (j && j.player) || j || {}, { x } = bisCur();
+  if (pl.class && pl.class !== wsClass(x.cls)) return L("This JSON is for another class ({0}).", String(pl.class).replace(/^Class/, ""));
+  const items = pl.equipment && Array.isArray(pl.equipment.items) ? pl.equipment.items : null;
+  if (!items && typeof pl.talentsString !== "string") return L("Not a WoWSims JSON.");
+  let tals = null;
+  if (typeof pl.talentsString === "string" && pl.talentsString) {
+    tals = {};
+    pl.talentsString.split("-").forEach((t, i) => [...t].forEach((c, k) => { const s = ((WS_TALENTS[x.cls] || [])[i] || [])[k], r = +c; if (s && r) tals[s] = r; }));
+  }
+  bisUpdate((d, si) => {
+    const set = d.sets[si];
+    if (items) { const g = {}; items.forEach((it, k) => { if (it && +it.id > 0 && WS_SLOTS[k]) g[WS_SLOTS[k]] = +it.id; }); set.g = g; }
+    // talents : ceux de la spé pour le 1er set (sans talents propres), sinon talents propres au set
+    if (tals) { if (si === 0 && !set.own) d.talents = tals; else { set.own = true; set.talents = tals; } }
+  });
+  return null;
+}
+function bisOpenIO() {
+  let m = $("#bisIO");
+  if (!m) { m = document.createElement("div"); m.id = "bisIO"; m.className = "bisio"; document.body.appendChild(m); }
+  const ed = bisCanEdit();
+  m.innerHTML = `<div class="bisiobox"><div class="bisioh"><b>${L("WoWSims JSON")}</b><span class="mute">${L("Copy this text to export it to wowsims.com/forever · paste another one, then Import")}</span><button class="ib" data-bisiox="1">×</button></div>
+    <textarea id="bisIOText" spellcheck="false">${esc(bisExport())}</textarea>
+    <div class="bisiof"><button class="btn small" data-bisiocopy="1">${L("Copy")}</button>${ed ? `<button class="btn small pri" data-bisioimp="1">${L("Import")}</button>` : ""}</div></div>`;
+  m.hidden = false;
+  const a = $("#bisIOText"); a.focus(); a.select();
+}
+const bisCloseIO = () => { const m = $("#bisIO"); if (m) m.hidden = true; };
+function bisRename(name) {
+  bisRen = false;
+  name = String(name || "").trim().slice(0, 30);
+  bisUpdate((d, si) => {
+    const set = d.sets[si];
+    if (!name || /^bis( \d+)?$/i.test(name)) { delete set.c; set.n = ""; } else { set.c = true; set.n = name; }
+    UI.bisSet = bisSortSets(d, set);
+  });
+}
+document.addEventListener("click", e => {
+  const t = e.target, m = $("#bisIO");
+  if (!m || m.hidden || !m.contains(t)) return;
+  if (t === m || t.closest("[data-bisiox]")) { bisCloseIO(); return; }
+  if (t.closest("[data-bisiocopy]")) {
+    const a = $("#bisIOText"); a.select();
+    if (navigator.clipboard) navigator.clipboard.writeText(a.value).then(() => toast(L("Copied.")), () => document.execCommand("copy"));
+    else document.execCommand("copy");
+    return;
+  }
+  if (t.closest("[data-bisioimp]")) {
+    const err = bisImport($("#bisIOText").value);
+    if (err) { toast(err, true); return; }
+    bisCloseIO(); toast(L("Gear and talents imported."));
+  }
+});
 
 // Pawn : « ( Pawn: v1: "Nom": Class=Paladin,Strength=2.530,… ) »
 function parsePawn(txt) {
@@ -363,14 +453,17 @@ document.addEventListener("click", e => {
   }
   if (UI.page !== "loots" || UI.lootTab !== "bis") return;
   let el;
-  if ((el = t.closest("[data-bisspec]"))) { UI.bisSpec = el.dataset.bisspec; UI.bisSet = 0; bisAllowOpen = false; bisClosePick(); renderLoots(); saveUI(); return; }
+  if ((el = t.closest("[data-bisspec]"))) { UI.bisSpec = el.dataset.bisspec; UI.bisSet = 0; bisAllowOpen = false; bisRen = false; bisClosePick(); renderLoots(); saveUI(); return; }
+  if (t.closest("[data-bisio]")) { bisOpenIO(); return; }
   if (t.closest("[data-bisallow]")) { bisAllowOpen = !bisAllowOpen; const l = $(".bisallowlist"); if (l) l.hidden = !bisAllowOpen; return; }
   if (bisAllowOpen && !t.closest(".bisallowlist")) { bisAllowOpen = false; const l = $(".bisallowlist"); if (l) l.hidden = true; }
   if (!bisCanEdit()) return;
   if ((el = t.closest("[data-bislot]"))) { bisOpenPick(el); return; }
   bisClosePick();
   if ((el = t.closest("[data-bisset]"))) {
-    if (el.dataset.bisset === "add") bisUpdate(d => { d.sets.push({ n: "Bis " + (d.sets.length + 1), g: {} }); UI.bisSet = d.sets.length - 1; });
+    if (el.dataset.bisset === "ren") { bisRen = true; renderLoots(); return; }
+    // nouveau set : après les Bis, avant les sets renommés
+    if (el.dataset.bisset === "add") bisUpdate(d => { const k = d.sets.filter(x => !x.c).length; d.sets.splice(k, 0, { n: "", g: {} }); UI.bisSet = k; });
     else bisUpdate((d, si) => { d.sets.splice(si, 1); UI.bisSet = Math.max(0, si - 1); });
     return;
   }
@@ -424,7 +517,15 @@ document.addEventListener("input", e => { if (e.target.id === "bisPickQ") bisFil
 document.addEventListener("keydown", e => {
   // chaîne Pawn collée : Entrée = « Import Pawn » (Maj + Entrée : retour à la ligne)
   if (e.target.id === "bisPawn" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const b = $("[data-bispawn]"); if (b) b.click(); return; }
+  if (e.target.id === "bisSetName") {
+    if (e.key === "Enter") { e.preventDefault(); bisRename(e.target.value); }
+    if (e.key === "Escape") { bisRen = false; renderLoots(); }
+    return;
+  }
+  if (e.key === "Escape" && $("#bisIO") && !$("#bisIO").hidden) { bisCloseIO(); return; }
   if (e.target.id !== "bisPickQ") return;
   if (e.key === "Escape") bisClosePick();
   if (e.key === "Enter") { const b = $("#bisPickList [data-bispickid]"); if (b) b.click(); }
 });
+// nom tapé puis clic ailleurs : enregistré
+document.addEventListener("focusout", e => { if (e.target.id === "bisSetName" && bisRen) bisRename(e.target.value); });

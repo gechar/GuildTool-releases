@@ -811,16 +811,23 @@ class Bridge:
                 except (TypeError, ValueError):
                     pass
             return out
-        sets = []
-        for st in (value.get("sets") or [])[:12]:
-            if not isinstance(st, dict):
-                continue
-            sets.append({"n": str(st.get("n") or "Bis")[:30], "g": {k: v for k, v in num_map(st.get("g"), int).items() if v > 0},
-                         **({"own": True, "talents": num_map(st.get("talents"), int)} if st.get("own") else {})})
+        def clean_sets(lst):
+            out = []
+            for st in (lst or [])[:12] if isinstance(lst, list) else []:
+                if not isinstance(st, dict):
+                    continue
+                out.append({"n": str(st.get("n") or "")[:30], "g": {k: v for k, v in num_map(st.get("g"), int).items() if v > 0},
+                            **({"c": True} if st.get("c") else {}),
+                            **({"own": True, "talents": num_map(st.get("talents"), int)} if st.get("own") else {})})
+            return out
+        # sets communs (anciens) et sets par phase (ph : {phase: [sets]}, nom choisi : c)
+        sets = clean_sets(value.get("sets"))
+        ph = {str(int(k)): clean_sets(v) for k, v in (value.get("ph") or {}).items()
+              if str(k).isdigit() and int(k) < 20} if isinstance(value.get("ph"), dict) else {}
         old_editors = ((self._data.get("bis") or {}).get(key) or {}).get("editors") or []
         editors = [str(x) for x in (value.get("editors") or []) if str(x).isdigit()][:50] if not editor else old_editors
         clean = {"ep": num_map(value.get("ep"), float), "talents": num_map(value.get("talents"), int), "sets": sets,
-                 "editors": editors, "t": remote.now()}
+                 "ph": ph, "editors": editors, "t": remote.now()}
         if editor:
             r = self._rh_call("bis", key=key, value={k: v for k, v in clean.items() if k != "t"})
             if not r.get("ok"):
@@ -842,8 +849,23 @@ class Bridge:
         for bosses in (self._boss_loot_view() or {}).values():
             for items in (bosses or {}).values():
                 ids.update(str(i) for i in (items or {}))
+        # sets de la phase de la guilde (sinon de la précédente qui en a, sinon les anciens sets communs)
+        phase = int(self._guild_phase() or 0)
+
+        def sets_of(d):
+            ph = d.get("ph") or {}
+            for p in range(phase, -1, -1):
+                if ph.get(str(p)):
+                    return ph[str(p)]
+            return d.get("sets") or []
+        def set_name(lst, k):
+            """= bisSetName (bis.js) : nom choisi, sinon Bis, Bis 2… parmi les sets non renommés"""
+            if lst[k].get("c"):
+                return lst[k].get("n") or "Bis"
+            n = sum(1 for x in lst[:k] if not x.get("c"))
+            return "Bis %d" % (n + 1) if n else "Bis"
         for d in bis.values():
-            for st in d.get("sets") or []:
+            for st in sets_of(d):
                 ids.update(str(i) for i in (st.get("g") or {}).values())
         cache, out = self._data.get("items") or {}, {}
         for i in ids:
@@ -852,7 +874,8 @@ class Bridge:
                 cls, spec = key.split(":", 1)
                 ep = d.get("ep") or {}
                 e = sum(float(ep.get(k) or 0) * v for k, v in stats.items()) if ep else 0
-                best = next((st.get("n") or "Bis" for st in d.get("sets") or [] if int(i) in [int(x) for x in (st.get("g") or {}).values()]), None)
+                lst = sets_of(d)
+                best = next((set_name(lst, k) for k, st in enumerate(lst) if int(i) in [int(x) for x in (st.get("g") or {}).values()]), None)
                 if not e and not best:
                     continue
                 out.setdefault(i, {}).setdefault(cls, []).append({k: v for k, v in (("s", spec), ("e", round(e, 1) if e else None), ("b", best)) if v})
