@@ -51,20 +51,62 @@ function wclMenu(anchor, ev) {
   openMenu(anchor, items);
 }
 
+// Liste : phase (dates de début des phases = assiduité de Members), tri par colonnes (clic sur le titre = critère en
+// tête ; priorité réglable en déplaçant les cases, comme Members)
+const LOG_SORTS = { lraid: "Raid", ldesc: "Description", ldate: "Date", ldur: "Duration", lvis: "Visibility" };
+Object.assign(SORT_LABEL, LOG_SORTS);
+const LOG_CMP = {
+  lraid: (a, b) => !a.zone - !b.zone || (a.zone || "").localeCompare(b.zone || ""),   // sans raid : à la fin
+  ldesc: (a, b) => (a.title || a.code).localeCompare(b.title || b.code),
+  ldate: (a, b) => b.start - a.start,
+  ldur: (a, b) => ((b.end || b.start) - b.start) - ((a.end || a.start) - a.start),
+  lvis: (a, b) => (a.vis || "").localeCompare(b.vis || ""),
+};
+function logsOrder() {
+  const o = (Array.isArray(UI.logsOrder) ? UI.logsOrder : []).filter(k => LOG_SORTS[k]);
+  for (const k of ["ldate", "lraid", "ldesc", "ldur", "lvis"]) if (!o.includes(k)) o.push(k);
+  return (UI.logsOrder = o);
+}
+const logsPhaseIdx = () => UI.logsPhase === null || UI.logsPhase === undefined ? PHASES.length : Math.min(UI.logsPhase, PHASES.length);
+function setLogsPhase(i) {
+  i = Math.max(0, Math.min(PHASES.length, i));
+  UI.logsPhase = i >= PHASES.length ? null : i;
+  render();
+}
+
 function renderLogs() {
-  const w = wcl(), page = $("#page-logs");
-  const rows = (w.reports || []).map(r => {
+  const w = wcl(), page = $("#page-logs"), order = logsOrder(), ph = logsPhaseIdx();
+  const range = ph < PHASES.length ? attPhaseRange(ph) : null;
+  const list = (w.reports || []).filter(r => ph >= PHASES.length || (range && r.start >= range[0] && r.start < range[1]))
+    .sort((a, b) => { for (const k of order) { const d = LOG_CMP[k](a, b); if (d) return d; } return 0; });
+  const rows = list.map(r => {
     const [d, t] = wclDate(r.start);
-    return `<tr data-wclopen="${esc(r.code)}"><td class="lgd"><a>${esc(r.title || r.code)}</a>${r.zone ? `<small>${esc(r.zone)}</small>` : ""}</td>
+    return `<tr data-wclopen="${esc(r.code)}"><td class="lgz">${esc(r.zone || "")}</td><td class="lgd"><a>${esc(r.title || r.code)}</a></td>
       <td class="lgdate"><span class="lgday">${esc(d)}</span><span class="lgsep">-</span><span class="lgtime">${t}</span></td>
       <td>${wclDur(r)}</td><td>${esc(L(WCL_VIS[r.vis] || r.vis || ""))}</td></tr>`;
   }).join("");
-  page.innerHTML = `<div class="logsbar"><button class="btn small" id="wclRefresh" data-help="Read the list again on Warcraft Logs">↻ ${L("Refresh")}</button>
+  const th = k => `<th data-lsort="${k}" class="${order[0] === k ? "on" : ""}" data-help="Sort by this column">${L(LOG_SORTS[k])}</th>`;
+  page.innerHTML = `<div class="logsbar">
+      <div class="attph" id="logsPh" data-help="Raids of this phase (from the start of the phase to the start of the next one) · wheel: next / previous">${phaseBtns(ph, "data-logsph")}</div>
+      <div class="mtop"><small>${L("Sort priority · drag to reorder")}</small><div class="chips" data-chipbar="logsOrder">${chipsHtml(order)}</div></div>
+      <button class="btn small" id="wclRefresh" data-help="Read the list again on Warcraft Logs">↻ ${L("Refresh")}</button>
       ${w.error ? `<span class="ko">${esc(w.error)}</span>` : ""}
       <span class="lgsrc">${w.source ? `<a data-wclsrc="1">${esc(w.source)}</a>` : ""}${w.checked ? " · " + L("read at {0}", new Date(w.checked).toLocaleTimeString(LOC(), { hour: "2-digit", minute: "2-digit" })) : ""}</span></div>
-    <div class="logswrap">${rows ? `<table class="logs"><thead><tr><th>${L("Description")}</th><th>${L("Date")}</th><th>${L("Duration")}</th><th>${L("Visibility")}</th></tr></thead><tbody>${rows}</tbody></table>`
-      : `<div class="empty-list">${L(w.error ? "No logs." : "No logs yet: they are read by the guild server (log in, then Sync).")}</div>`}</div>`;
+    <div class="logswrap">${rows ? `<table class="logs"><thead><tr>${["lraid", "ldesc", "ldate", "ldur", "lvis"].map(th).join("")}</tr></thead><tbody>${rows}</tbody></table>`
+      : `<div class="empty-list">${L(w.error ? "No logs." : (w.reports || []).length ? "No logs in this phase." : "No logs yet: they are read by the guild server (log in, then Sync).")}</div>`}</div>`;
 }
+document.addEventListener("click", e => {
+  const t = e.target.closest && e.target.closest("#page-logs [data-lsort], #page-logs [data-logsph]");
+  if (!t) return;
+  if (t.dataset.logsph) { setLogsPhase(+t.dataset.logsph); return; }
+  UI.logsOrder = [t.dataset.lsort, ...logsOrder().filter(k => k !== t.dataset.lsort)];
+  render();
+});
+document.addEventListener("wheel", e => {
+  if (!(e.target.closest && e.target.closest("#logsPh"))) return;
+  e.preventDefault();
+  setLogsPhase(logsPhaseIdx() + (e.deltaY < 0 ? -1 : 1));
+}, { passive: false });
 
 document.addEventListener("click", e => {
   const t = e.target.closest && e.target.closest("[data-wcl], [data-wclopen], #wclRefresh, [data-wclsrc]");

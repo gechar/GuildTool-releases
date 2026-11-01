@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import sys
 import threading
 import time
@@ -3884,6 +3885,17 @@ class Bridge:
             return {"ok": False, "error": str(e)}
 
 
+def free_port(port):
+    """port s'il est libre (personne n'y écoute), sinon un port libre choisi par Windows."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as c:
+        c.settimeout(0.3)
+        if c.connect_ex(("127.0.0.1", port)) != 0:
+            return port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as c:
+        c.bind(("127.0.0.1", 0))
+        return c.getsockname()[1]
+
+
 def main():
     # tant que l'appli est ouverte, GuildTool Sync (sync.py, mêmes données dans APP_DIR) se met en pause
     app_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\GuildToolApp")   # noqa: F841 (gardé ouvert)
@@ -3894,8 +3906,11 @@ def main():
     webview.settings["DRAG_REGION_DIRECT_TARGET_ONLY"] = True
     webview.create_window("Guild Tool", index, js_api=bridge, width=1250, height=800,
                           min_size=(1200, 760), background_color="#1e1f24", frameless=True, easy_drag=False)
-    # stockage persistant : garde les préférences d'affichage (onglet, tri) entre deux lancements
-    webview.start(http_server=True, debug="--debug" in sys.argv, private_mode=False,
+    # stockage persistant : garde les préférences d'affichage (onglet, tri) entre deux lancements ; elles sont liées
+    # à l'adresse de la page, donc au port 42001 (celui de pywebview par défaut) ; port déjà pris par un autre
+    # programme (ancien GuildTool Sync…) : sous Windows le serveur s'y lierait quand même et ne recevrait rien
+    # (page « 404 ») -> autre port, préférences du stockage perdues pour cette fois seulement
+    webview.start(http_server=True, http_port=free_port(42001), debug="--debug" in sys.argv, private_mode=False,
                   storage_path=os.path.join(APP_DIR, "webview"))
 
 

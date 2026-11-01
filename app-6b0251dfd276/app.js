@@ -572,15 +572,18 @@ function renderViewBtns() {
   const tab = UI.lootTab || "all";
   $("#viewBtns").innerHTML = lootViews().map(([k, l]) => `<button class="ltab${tab === k ? " on" : ""}" data-ltab="${k}">${L(l)}</button>`).join("");
 }
-// Loots : boutons de phase (comme l'assiduité du détail des persos) : jusqu'à 2 de chaque côté, « All » après la dernière
-function renderLootPhSel() {
-  const cur = lootPhaseIdx();
-  let ph = `<span>${L("Phase")}</span>`;
+// Sélecteur de phase (Loots, assiduité des Members, Logs) : 5 cases au plus, la choisie au milieu en blanc, une de
+// chaque côté normale, la 2e de chaque côté estompée ; « P1 », « P2 »… puis « ALL » après la dernière (attr = data-…)
+function phaseBtns(cur, attr) {
+  let ph = "";
   for (let d = -2; d <= 2; d++) {
     const i = cur + d;
-    ph += i >= 0 && i <= PHASES.length ? `<button class="aphb${i === cur ? " on" : ""}" data-lootph="${i}">${i === PHASES.length ? L("All") : i + 1}</button>` : '<span class="aphb ph0"></span>';
+    ph += i >= 0 && i <= PHASES.length ? `<button class="aphb${i === cur ? " on" : ""}${Math.abs(d) === 2 ? " far" : ""}" ${attr}="${i}">${i === PHASES.length ? L("ALL") : "P" + (i + 1)}</button>` : '<span class="aphb ph0"></span>';
   }
-  $("#lootPhSel").innerHTML = ph;
+  return ph;
+}
+function renderLootPhSel() {
+  $("#lootPhSel").innerHTML = phaseBtns(lootPhaseIdx(), "data-lootph");
 }
 $("#lootPhSel").addEventListener("click", e => { const b = e.target.closest("[data-lootph]"); if (b) setPhase(+b.dataset.lootph); });
 $("#lootPhSel").addEventListener("wheel", e => { e.preventDefault(); setPhase(lootPhaseIdx() + (e.deltaY < 0 ? -1 : 1)); }, { passive: false });
@@ -1689,13 +1692,9 @@ function attendanceHtml(u) {
   }
   // phase des compteurs : un bouton par phase puis « All », le choisi en blanc ; seulement pour ces compteurs
   const cur = UI.attPhase === null || UI.attPhase === undefined ? PHASES.length : UI.attPhase;
-  let ph = "";
-  for (let d = -2; d <= 2; d++) {
-    const i = cur + d;
-    ph += i >= 0 && i <= PHASES.length ? `<button class="aphb${i === cur ? " on" : ""}" data-attph="${i}">${i === PHASES.length ? L("All") : i + 1}</button>` : '<span class="aphb ph0"></span>';
-  }
+  const ph = phaseBtns(cur, "data-attph");
   return `<div class="matt"><h4 data-help="20-player raids: this character (all his characters)">${L("Attendance")} · <b>${a.n}</b> <span class="mute">(${a.total})</span></h4>
-    <div class="attph" data-help="Phase of the attendance counts (only this tab)"><span>${L("Phase")}</span>${ph}</div><div class="attcal">${html}</div></div>`;
+    <div class="attph" data-help="Phase of the attendance counts (only this tab)">${ph}</div><div class="attcal">${html}</div></div>`;
 }
 // teinte des arbres de talents (couleur de classe ; prêtre : blanc cassé, moins lumineux)
 const TREE_TINT = { PRIEST: "#b9b4a7" };
@@ -1718,7 +1717,7 @@ document.addEventListener("click", e => {
   saveUI(); render();
 });
 document.addEventListener("wheel", e => {
-  const w = e.target.closest && e.target.closest(".attph");
+  const w = e.target.closest && e.target.closest(".matt .attph");   // assiduité seulement (Loots et Logs : les leurs)
   if (!w) return;
   e.preventDefault();
   setAttPhase((UI.attPhase === null || UI.attPhase === undefined ? PHASES.length : UI.attPhase) + (e.deltaY < 0 ? -1 : 1));

@@ -4,7 +4,7 @@
 // son nom (anglais / français), ou celui choisi ici ; le serveur les met à jour à chaque relecture des membres Discord.
 const DC_GROUPS = [
   ["Classes", CLASS_ORDER.map(c => ["class:" + c, CLASS_NAME[c]])],
-  ["Roles", [["role:Tank", "Tank"], ["role:Healer", "Healer"], ["role:Melee", "Melee"], ["role:Ranged", "Ranged"], ["role:DPS", "DPS"]]],
+  ["Roles", [["role:Tank", "Tank"], ["role:Healer", "Healer"], ["role:Melee", "Melee"], ["role:Ranged", "Ranged"]]],
   ["Professions", [["prof:alchemy", "Alchemy"], ["prof:blacksmithing", "Blacksmithing"], ["prof:enchanting", "Enchanting"],
     ["prof:engineering", "Engineering"], ["prof:herbalism", "Herbalism"], ["prof:leatherworking", "Leatherworking"],
     ["prof:mining", "Mining"], ["prof:skinning", "Skinning"], ["prof:tailoring", "Tailoring"], ["prof:cooking", "Cooking"],

@@ -788,8 +788,9 @@ textarea.ef { height: auto; min-height: 46px; padding: 6px 9px; resize: vertical
 .aphb:hover { border-color: var(--hl); color: #fff; }
 .aphb.on { color: #16171b; background: #fff; border-color: #fff; }
 .aphb.ph0 { visibility: hidden; display: inline-block; }
+.aphb.far:not(:hover) { opacity: .75; }
 .matt { align-self: start; }
-.attph > span:first-child { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); margin-right: 4px; }
+.attph > span:first-child:not(.aphb) { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); margin-right: 4px; }
 .aphn { border: 0; background: none; color: #fff; font-weight: 700; cursor: pointer; padding: 0 2px; min-width: 14px; }
 .aphn.d0 { font-size: 13px; } .aphn.d1 { font-size: 10px; opacity: .5; } .aphn.d9 { min-width: 14px; }
 .matt h4 b { color: var(--gold, #ffd27a); font-size: 12px; }
@@ -842,7 +843,10 @@ textarea.ef { height: auto; min-height: 46px; padding: 6px 9px; resize: vertical
 .lrow .it img { width: 16px; height: 16px; }
 
 /* ---------- commun ---------- */
-.tip { position: fixed; z-index: 90; pointer-events: none; max-width: 280px; background: rgba(10,12,22,.97); border: 1px solid #4b5170; padding: 7px 9px; font-size: 11.5px; line-height: 1.4; box-shadow: 0 6px 18px rgba(0,0,0,.5); }
+.tip { position: fixed; z-index: 90; pointer-events: none; max-width: 280px; background: rgba(10,12,22,.97); border: 1px solid rgba(var(--hl-rgb, 111,124,255), .55); padding: 7px 9px; font-size: 11.5px; line-height: 1.4;
+  /* néon caché derrière le cadre : lumière de la couleur de surbrillance qui déborde des bords en se fondant */
+  box-shadow: 0 0 5px 0 rgba(var(--hl-rgb, 111,124,255), .7), 0 0 16px 3px rgba(var(--hl-rgb, 111,124,255), .4),
+              0 0 38px 8px rgba(var(--hl-rgb, 111,124,255), .2), 0 6px 18px rgba(0,0,0,.5); }
 .tip b { display: block; color: #fff; font-size: 12.5px; } .tip .e { color: var(--gold); } .tip .p { color: var(--mute); }
 .tip .ok { color: #5fd38d; } .tip .ko { color: var(--red); }
 /* infobulle Wowhead (objets, talents) : niveau d'objet, stats, effets aux couleurs du jeu */
@@ -1536,11 +1540,16 @@ body.pg-loots .sub .vbtns { left: max(calc(25% + 190px), 590px); }
 .logswrap { flex: 1; min-height: 0; overflow-y: auto; background: rgba(var(--panel-rgb), var(--list-alpha, .6)); border: 1px solid var(--border); }
 table.logs { width: 100%; border-collapse: collapse; }
 table.logs th { position: sticky; top: 0; background: var(--head); color: var(--mute); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; padding: 7px 10px; text-align: center; border-bottom: 1px solid var(--border); }
-table.logs th:first-child { text-align: left; }
+table.logs th:nth-child(-n+2) { text-align: left; cursor: pointer; }
+table.logs th { cursor: pointer; }
+table.logs th.on { color: #fff; }
+table.logs td.lgz { text-align: left; color: var(--mute); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.logsbar .attph { margin: 0; flex-wrap: nowrap; }
+.logsbar .mtop { display: flex; align-items: center; gap: 8px; }
 table.logs td { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,.04); text-align: center; white-space: nowrap; }
 table.logs tbody tr { cursor: pointer; }
 table.logs tbody tr:hover { background: var(--hover); }
-table.logs td.lgd { text-align: left; width: 50%; white-space: normal; }
+table.logs td.lgd { text-align: left; width: 40%; white-space: normal; }
 table.logs td.lgd a { color: #7fb4ff; font-weight: 600; }
 table.logs td.lgd small { color: var(--mute); margin-left: 8px; }
 /* date alignée sur le « - » : jour à droite, heure à gauche */
