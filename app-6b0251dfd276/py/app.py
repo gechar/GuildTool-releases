@@ -1515,7 +1515,11 @@ class Bridge:
             elif pid in cache:
                 events.append(cache[pid])
         old = remote.now() - self.ARCHIVE_AGE
-        events += [e for pid, e in cache.items() if pid not in listed and int(e.get("start") or 0) < old]
+        # archive gardée seulement si Raid-Helper ne l'a pas déjà sous un autre id (event archivé = recréé dans le
+        # salon d'archive : même date, même titre)
+        same = {(int(e.get("start") or 0), e.get("title")) for e in events}
+        events += [e for pid, e in cache.items() if pid not in listed and int(e.get("start") or 0) < old
+                   and (int(e.get("start") or 0), e.get("title")) not in same]
         events.sort(key=lambda e: int(e.get("start") or 0))
         return events
 
@@ -2436,8 +2440,11 @@ class Bridge:
                 # jours d'absence d'un joueur (calendrier : absents sous les events du jour)
                 self._data.setdefault("guildAbs", {})[doc_id[4:]] = {**(value or {}), "t": t}
             elif doc_id.startswith("rhev_"):
-                # event Raid-Helper changé par Guild Tool (inscription, statut, création, modification, suppression)
-                if t >= int(self._data.get("lastSync") or 0) - 5 and self._apply_live_event(doc_id[5:], value or {}):
+                # event Raid-Helper changé par Guild Tool (inscription, statut, création, modification, suppression) ;
+                # appli jamais synchronisée (version web, nouveau PC) : rien, la liste du Sync est à jour, et ces docs
+                # gardent les events d'avant leur archivage (Raid-Helper les recrée sous un autre id) -> doublons
+                last = int(self._data.get("lastSync") or 0)
+                if last and t >= last - 5 and self._apply_live_event(doc_id[5:], value or {}):
                     stats["events"] = stats.get("events", 0) + 1
         if stats.get("events"):
             self._resolve_all()
