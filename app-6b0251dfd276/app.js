@@ -573,15 +573,37 @@ function phaseBtns(cur, attr, max = PHASES.length) {
   let ph = "";
   for (let d = -2; d <= 2; d++) {
     const i = cur + d;
-    ph += i >= 0 && i <= max ? `<button class="aphb${i === cur ? " on" : ""}${Math.abs(d) === 2 ? " far" : ""}" ${attr}="${i}">${i === PHASES.length ? L("ALL") : "P" + (i + 1)}</button>` : '<span class="aphb ph0"></span>';
+    // texte dans un span : rogné à la hauteur des capitales (text-box) pour être centré quelle que soit la police
+    ph += i >= 0 && i <= max ? `<button class="aphb${i === cur ? " on" : ""}${Math.abs(d) === 2 ? " far" : ""}${i === PHASES.length ? " all" : ""}" ${attr}="${i}"><span>${i === PHASES.length ? L("ALL") : "P" + (i + 1)}</span></button>` : '<span class="aphb ph0"></span>';
   }
   return ph;
 }
+// sélecteur de la sous-barre : phase des Loots, ou phase de la liste des Logs
 function renderLootPhSel() {
-  $("#lootPhSel").innerHTML = phaseBtns(lootPhaseIdx(), "data-lootph");
+  const s = $("#lootPhSel"), logs = UI.page === "logs";
+  s.innerHTML = logs ? phaseBtns(logsPhaseIdx(), "data-logsph") : phaseBtns(lootPhaseIdx(), "data-lootph");
+  s.dataset.help = logs ? "Raids of this phase (from the start of the phase to the start of the next one) · wheel: next / previous"
+    : "Phase of the loots (only this tab) · wheel: next / previous";
 }
-$("#lootPhSel").addEventListener("click", e => { const b = e.target.closest("[data-lootph]"); if (b) setPhase(+b.dataset.lootph); });
-$("#lootPhSel").addEventListener("wheel", e => { e.preventDefault(); setPhase(lootPhaseIdx() + (e.deltaY < 0 ? -1 : 1)); }, { passive: false });
+$("#lootPhSel").addEventListener("click", e => {
+  const b = e.target.closest("[data-lootph], [data-logsph]");
+  if (b) b.dataset.logsph ? setLogsPhase(+b.dataset.logsph) : setPhase(+b.dataset.lootph);
+});
+$("#lootPhSel").addEventListener("wheel", e => {
+  e.preventDefault();
+  const dir = e.deltaY < 0 ? -1 : 1;
+  if (UI.page === "logs") setLogsPhase(logsPhaseIdx() + dir); else setPhase(lootPhaseIdx() + dir);
+}, { passive: false });
+// Members et Loots : clic sur l'icône d'un objet = sa page Wowhead (Forever) dans le navigateur (exe : navigateur par
+// défaut ; web : nouvel onglet). Pas dans la Bislist (clic = choisir l'objet de la case)
+const ITEM_ICON_SEL = ".it[data-gs], .lrow .it img, .sit[data-item], .lic[data-item], .lcic[data-item]";
+document.addEventListener("click", e => {
+  if (UI.page !== "members" && UI.page !== "loots") return;
+  const ic = e.target.closest && e.target.closest(ITEM_ICON_SEL);
+  if (!ic || ic.closest("#bisPickList")) return;
+  const id = +(ic.dataset.item || (ic.closest("[data-item]") || {}).dataset?.item || 0);
+  if (id > 0) api().open_url(`https://www.wowhead.com/forever/item=${id}`);
+});
 $("#phaseWheel").addEventListener("wheel", e => { e.preventDefault(); setPhase((UI.page === "loots" ? lootPhaseIdx() : UI.phase) + (e.deltaY < 0 ? -1 : 1)); }, { passive: false });
 
 const HL = { a: "#6f7cff", b: "#3fc7eb", grad: false, timer: null };
@@ -649,8 +671,8 @@ function renderTop() {
   // sélecteur de phase : barre de Raid Comps seulement ; modifiable par les admins
   $("#phaseWheel").hidden = UI.page !== "comps";
   // Loots : sélecteur de phase comme le détail des persos (Members), à droite du lockout
-  $("#lootPhSel").hidden = UI.page !== "loots";
-  if (UI.page === "loots") renderLootPhSel();
+  $("#lootPhSel").hidden = UI.page !== "loots" && UI.page !== "logs";
+  if (UI.page === "loots" || UI.page === "logs") renderLootPhSel();
   $("#viewBtns").hidden = UI.page !== "loots";
   // Assigns : plein écran de la carte seulement sur sa page (onglet de boss)
   document.body.classList.toggle("afull", !!UI.aFull && UI.page === "assigns" && UI.aTab > 0);
