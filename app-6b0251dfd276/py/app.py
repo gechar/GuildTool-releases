@@ -1331,7 +1331,7 @@ class Bridge:
                 "title": self._title(),
                 "slash": self._slash(),
                 "guildPhase": self._guild_phase(), "isAdmin": self.is_admin(),
-                "notes": self._data.get("notes") or {}, "rhSettings": self._rh_settings(), "statusIcons": self._status_icon_urls(),
+                "notes": self._data.get("notes") or {}, "rhSettings": self._rh_settings(), "dcRoles": self._dc_roles_cfg(), "statusIcons": self._status_icon_urls(),
                 "ccomps": self._data.get("ccomps") or {}, "charGone": self._char_gone(), "charTrash": self._char_trash(),
                 "guildAbs": self._data.get("guildAbs") or {}, "charOwners": self._char_owners(),
                 "mainSpecs": self._main_specs(), "online": self._online(), "lootDB": self._loot_list(),
@@ -1607,6 +1607,7 @@ class Bridge:
             "players": v.get("players") if v.get("players") is not None else (cur.get("players") if same else None),
             "roles": v.get("roles") or (cur.get("roles") if same else []) or [],
             "ownerId": v.get("ownerId") or (cur.get("ownerId") if same else None),
+            "roleSync": v.get("roleSync") or (cur.get("roleSync") if same else None),
         }
         return self._data["discordMembers"]
 
@@ -1836,6 +1837,44 @@ class Bridge:
         if self._rh_settings()["wclUrl"] != old_wcl:            # page des logs changée : liste relue
             self.wcl_refresh(True)
         return {"ok": True}
+
+    # ------------------------------------------------------------ rôles Discord automatiques
+    def _dc_roles_cfg(self):
+        """Réglage des rôles Discord donnés d'après les persos : {on, min, map {clé: id du rôle | "-"}}."""
+        c = (self._data.get("guildSettings") or {}).get("dcRoles")
+        c = c if isinstance(c, dict) else {}
+        return {"on": bool(c.get("on")), "min": int(c.get("min") or 60), "map": dict(c.get("map") or {})}
+
+    def set_dc_roles(self, cfg):
+        """(admin) Rôles Discord automatiques : marche / arrêt, niveau minimum, rôle choisi pour chaque clé."""
+        if not self.is_admin():
+            return {"ok": False, "error": "Admins only."}
+        cfg = cfg if isinstance(cfg, dict) else {}
+        out = {"on": bool(cfg.get("on")), "min": max(1, min(60, int(cfg.get("min") or 60))),
+               "map": {str(k): str(v) for k, v in (cfg.get("map") or {}).items() if v}}
+        with self._lock:
+            gs = {**(self._data.get("guildSettings") or {}), "dcRoles": out, "t": remote.now()}
+            self._data["guildSettings"] = gs
+            _save(DATA_PATH, self._data)
+            cl = self._cloud
+            try:
+                if cl.logged and cl.guild_id and cl.officer:   # tout de suite sur le serveur (la fonction le lit)
+                    cl.push_docs({"settings": (gs["t"], {k: v for k, v in gs.items() if k != "t"})})
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        return {"ok": True, "dcRoles": out}
+
+    def dc_roles(self, op="plan", names=None):
+        """Rôles Discord automatiques (fonction serveur) : « plan » rôle de chaque clé et changements à faire,
+        « apply » les faire tout de suite, « create » créer les rôles manquants (names : {clé: nom})."""
+        cl = self._cloud
+        if not (cl.logged and cl.guild_id):
+            return {"ok": False, "error": "Log in and choose your guild server first."}
+        try:
+            r = cl.api("dcroles", guildId=cl.guild_id, op=str(op), names=names or {}, timeout=150)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True, **r}
 
     # ------------------------------------------------------------ Warcraft Logs
     def _wcl_view(self):

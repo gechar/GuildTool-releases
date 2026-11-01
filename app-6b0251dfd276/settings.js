@@ -193,10 +193,12 @@ function renderGuildAdmin() {
         <input data-rh="rhOfficerChannel" value="${esc(s.rhOfficerChannel || "1481015325855187035")}" placeholder="${L("Channel id")}"></label>
       <label class="sfield" data-help="Reports list of the guild on Warcraft Logs (Logs tab and logs of the Calendar), for example https://sod.warcraftlogs.com/guild/reports-list/733861">${L("Logs page (Warcraft Logs)")}
         <input data-rh="wclUrl" value="${esc(s.wclUrl || "https://sod.warcraftlogs.com/guild/reports-list/733861")}" placeholder="https://sod.warcraftlogs.com/guild/reports-list/…" spellcheck="false"></label>
-      <button class="btn small" id="rhSave">${L("Save")}</button>` ;
+      <button class="btn small" id="rhSave">${L("Save")}</button>
+      <div id="dcRoles"></div>` ;
   }
   // tout le bloc réécrit d'un coup (sinon les sections s'empilaient à chaque ouverture)
   box.innerHTML = h;
+  if (typeof renderDcRoles === "function") renderDcRoles();
 }
 async function saveRhSettings(quiet) {
   const values = {};

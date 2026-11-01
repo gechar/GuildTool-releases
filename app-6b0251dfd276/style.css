@@ -1546,3 +1546,10 @@ table.logs td.lgd small { color: var(--mute); margin-left: 8px; }
 /* date alignée sur le « - » : jour à droite, heure à gauche */
 table.logs td.lgdate { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; font-variant-numeric: tabular-nums; }
 .lgday { text-align: right; } .lgtime { text-align: left; } .lgsep { color: var(--mute); }
+/* Settings > Admin : rôles Discord automatiques */
+.dcgrp { margin: 10px 0 2px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); font-weight: 700; }
+.dcrow select { width: 190px; flex: none; }
+.dcrow .ko { cursor: help; }
+.dcbtns { margin: 10px 0 6px; flex-wrap: wrap; }
+.dcchg { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.dcchg .ok { color: var(--green, #5fd35f); } .dcchg .ko { color: var(--red); }
