@@ -191,6 +191,8 @@ function renderGuildAdmin() {
       ${evSelect("rhClassEvent", "Event Class", "Event where each player signed up their characters once: the 👍 reaction copies them into the chosen event.")}
       <label class="sfield" data-help="Discord channel where the bot tells the officers when a player in a comp is late, tentative or absent.">${L("Officer channel")}
         <input data-rh="rhOfficerChannel" value="${esc(s.rhOfficerChannel || "1481015325855187035")}" placeholder="${L("Channel id")}"></label>
+      <label class="sfield" data-help="Reports list of the guild on Warcraft Logs (Logs tab and logs of the Calendar), for example https://sod.warcraftlogs.com/guild/reports-list/733861">${L("Logs page (Warcraft Logs)")}
+        <input data-rh="wclUrl" value="${esc(s.wclUrl || "https://sod.warcraftlogs.com/guild/reports-list/733861")}" placeholder="https://sod.warcraftlogs.com/guild/reports-list/…" spellcheck="false"></label>
       <button class="btn small" id="rhSave">${L("Save")}</button>` ;
   }
   // tout le bloc réécrit d'un coup (sinon les sections s'empilaient à chaque ouverture)
@@ -202,6 +204,7 @@ async function saveRhSettings(quiet) {
   const r = await api().set_rh_settings(values);
   if (!r.ok) { toast(r.error, true); return; }
   ST.rhSettings = { ...(ST.rhSettings || {}), ...values };
+  if ("wclUrl" in values) ST.wcl = await api().get_state().then(s => s.wcl);
   if (!quiet) toast(L("Saved."));
 }
 $("#guildAdmin").addEventListener("click", e => { if (e.target.closest("#rhSave")) saveRhSettings(false); });

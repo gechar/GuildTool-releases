@@ -1517,3 +1517,32 @@ body.pg-loots .sub .vbtns { left: max(calc(25% + 190px), 590px); }
 .mnoch.open .tri { transform: translate(-1px, 2px) rotate(90deg); }
 .mnoch .n { margin-left: 4px; color: var(--text); }
 .mrow.nochar { cursor: default; }
+
+/* ---------- Logs (Warcraft Logs) : onglet et icône des events passés du calendrier */
+.cal .ev.haslog { padding-right: calc(var(--rowh, 120px) / 5 * 2); }
+.evlog { display: grid; place-items: center; color: #e8a33c; cursor: pointer; border-radius: 3px; }
+.evlog svg { width: calc(var(--rowh, 120px) / 5 - 7px); height: calc(var(--rowh, 120px) / 5 - 7px); fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+.evlog:hover { background: rgba(232, 163, 60, .18); color: #ffc46b; }
+.evlog.none { color: var(--mute); opacity: .45; }
+.ev .evlog { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); }
+.ev .evlog.shift { right: calc(var(--rowh, 120px) / 5 + 1px); }
+.dbtn.devt .evlog { margin-left: auto; flex: none; }
+.dbtn.devt .evlog + .evme { margin-left: 4px; }
+#page-logs.on { display: flex; flex-direction: column; padding: 10px 12px; gap: 8px; min-height: 0; }
+.logsbar { display: flex; align-items: center; gap: 12px; }
+.logsbar .ko { color: var(--red); font-size: 11.5px; }
+.logsbar .lgsrc { margin-left: auto; color: var(--mute); font-size: 11px; }
+.logsbar .lgsrc a { color: var(--mute); cursor: pointer; text-decoration: underline; }
+.logswrap { flex: 1; min-height: 0; overflow-y: auto; background: rgba(var(--panel-rgb), var(--list-alpha, .6)); border: 1px solid var(--border); }
+table.logs { width: 100%; border-collapse: collapse; }
+table.logs th { position: sticky; top: 0; background: var(--head); color: var(--mute); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; padding: 7px 10px; text-align: center; border-bottom: 1px solid var(--border); }
+table.logs th:first-child { text-align: left; }
+table.logs td { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,.04); text-align: center; white-space: nowrap; }
+table.logs tbody tr { cursor: pointer; }
+table.logs tbody tr:hover { background: var(--hover); }
+table.logs td.lgd { text-align: left; width: 50%; white-space: normal; }
+table.logs td.lgd a { color: #7fb4ff; font-weight: 600; }
+table.logs td.lgd small { color: var(--mute); margin-left: 8px; }
+/* date alignée sur le « - » : jour à droite, heure à gauche */
+table.logs td.lgdate { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; font-variant-numeric: tabular-nums; }
+.lgday { text-align: right; } .lgtime { text-align: left; } .lgsep { color: var(--mute); }

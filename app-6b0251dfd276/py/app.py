@@ -1380,7 +1380,7 @@ class Bridge:
                 # membres du serveur Discord (bot) : Members (sans perso, colonne Role), Settings > Social
                 "discordMembers": self._data.get("discordMembers") or {},
                 # mes notes (copie de celles du serveur, relue au Sync et à l'ouverture de Settings > Social)
-                "socialScores": self._social_scores(),
+                "socialScores": self._social_scores(), "wcl": self._wcl_view(),
                 "version": APP_VERSION,
             }
 
@@ -1803,8 +1803,9 @@ class Bridge:
 
     # ------------------------------------------------------------ calendrier : notes, events Raid-Helper, inscriptions
     RH_FIELDS = ("rhMainChannel", "rhCommuChannel", "rhTemplate", "rhCopyFrom", "rhClassEvent", "rhOfficerChannel",
-                 "rhMainArchive", "rhCommuArchive")
-    RH_DEFAULTS = {"rhTemplate": "wowforever", "rhMainChannel": "1481727247223226449", "rhCommuChannel": "1558492094581051514",
+                 "rhMainArchive", "rhCommuArchive", "wclUrl")
+    RH_DEFAULTS = {"wclUrl": "https://sod.warcraftlogs.com/guild/reports-list/733861",
+                   "rhTemplate": "wowforever", "rhMainChannel": "1481727247223226449", "rhCommuChannel": "1558492094581051514",
                    "rhMainArchive": "1559968092774342706", "rhCommuArchive": "1559968122457563166",
                    "rhCopyFrom": "1481759652965257367", "rhClassEvent": "1481777223366086809",
                    "rhOfficerChannel": "1481015325855187035"}
@@ -1819,6 +1820,7 @@ class Bridge:
             return {"ok": False, "error": "Admins only."}
         with self._lock:
             gs = dict(self._data.get("guildSettings") or {})
+            old_wcl = self._rh_settings()["wclUrl"]
             for k in self.RH_FIELDS:
                 if k in (values or {}):
                     gs[k] = str(values[k] or "").strip()
@@ -1831,7 +1833,47 @@ class Bridge:
                     cl.push_docs({"settings": (gs["t"], {k: v for k, v in gs.items() if k != "t"})})
             except Exception as e:
                 return {"ok": False, "error": str(e)}
+        if self._rh_settings()["wclUrl"] != old_wcl:            # page des logs changée : liste relue
+            self.wcl_refresh(True)
         return {"ok": True}
+
+    # ------------------------------------------------------------ Warcraft Logs
+    def _wcl_view(self):
+        """Reports Warcraft Logs de la guilde (gardés par le serveur, doc « wcllogs ») et report choisi par event."""
+        w = self._data.get("wclLogs") or {}
+        return {"reports": w.get("reports") or [], "site": w.get("site") or "sod.warcraftlogs.com", "error": w.get("error"),
+                "checked": w.get("checked"), "source": w.get("source"),
+                "picks": {e: p.get("code") or "" for e, p in (self._data.get("wclPicks") or {}).items()}}
+
+    def wcl_refresh(self, force=False):
+        """Liste des reports relue par le serveur (au plus toutes les 10 min, force = au plus toutes les minutes)."""
+        cl = self._cloud
+        if not (cl.logged and cl.guild_id):
+            return self._wcl_view()
+        try:
+            r = cl.api("wcl", guildId=cl.guild_id, force=bool(force), timeout=90)
+        except Exception as e:
+            r = {**(self._data.get("wclLogs") or {}), "error": str(e)}
+        with self._lock:
+            self._data["wclLogs"] = r
+            _save(DATA_PATH, self._data)
+        return self._wcl_view()
+
+    def wcl_pick(self, event_id, code):
+        """(officier) Report Warcraft Logs d'un event passé, choisi à la main ; code vide = le plus proche (automatique)."""
+        if not self.can_edit():
+            return {"ok": False, "error": "Officers only."}
+        cl = self._cloud
+        with self._lock:
+            t = remote.now()
+            self._data.setdefault("wclPicks", {})[str(event_id)] = {"code": str(code or ""), "t": t}
+            _save(DATA_PATH, self._data)
+            try:
+                if cl.logged and cl.guild_id and cl.officer:
+                    cl.push_docs({"wcl_" + str(event_id): (t, {"code": str(code or "")})})
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        return {"ok": True, "wcl": self._wcl_view()}
 
     def set_note(self, day, text):
         """Note d'un jour (AAAAMMJJ), partagée avec la guilde ; tout le monde peut l'écrire."""
@@ -2250,6 +2292,9 @@ class Bridge:
         gs = self._data.get("guildSettings") or {}
         if gs.get("t"):
             docs["settings"] = (int(gs["t"]), {k: v for k, v in gs.items() if k != "t"})
+        # report Warcraft Logs choisi par un officier pour un event (un doc par event)
+        for eid, p in (self._data.get("wclPicks") or {}).items():
+            docs["wcl_" + eid] = (int(p.get("t") or 0), {"code": p.get("code") or ""})
         return docs
 
     def _cloud_sync(self):
@@ -2276,6 +2321,7 @@ class Bridge:
         self._social_pairs = self._fetch_social_pairs()
         self._fetch_social_scores()
         self._fetch_discord_members()
+        self.wcl_refresh()
         if stats["received"] or stats["files"]:
             self._write_fade_masks()
             self._ensure_blur_textures()
@@ -2409,6 +2455,11 @@ class Bridge:
             elif doc_id == "discordmembers":
                 # membres du serveur Discord gardés par le serveur de la guilde (Members, Settings > Social)
                 self._set_discord_members(value)
+            elif doc_id == "wcllogs":
+                # reports Warcraft Logs de la guilde, relus par le serveur (onglet Logs, calendrier)
+                self._data["wclLogs"] = value or {}
+            elif doc_id.startswith("wcl_"):
+                self._data.setdefault("wclPicks", {})[doc_id[4:]] = {"code": (value or {}).get("code") or "", "t": t}
             elif doc_id.startswith("online_"):
                 # un autre joueur ouvre l'appli : je renvoie mon signal pour qu'il me compte aussi
                 uid, online = doc_id[7:], self._data.setdefault("online", {})

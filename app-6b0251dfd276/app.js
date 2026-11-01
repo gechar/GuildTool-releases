@@ -507,6 +507,7 @@ function render() {
   else if (UI.page === "comps") { renderComps(); renderList(); }
   else if (UI.page === "assigns") renderAssigns();
   else if (UI.page === "craft") renderCraft();
+  else if (UI.page === "logs") renderLogs();
   else if (UI.page === "loots") renderLoots();
   else renderMembers();
   saveUI();
@@ -674,7 +675,7 @@ function renderTop() {
     s.innerHTML = `<i></i><span class="ls">${esc(L("Last Sync"))}<br>${p2(d.getDate())}/${p2(d.getMonth() + 1)} - ${p2(d.getHours())}:${p2(d.getMinutes())}</span>`;
   } else { s.className = "st-line warn"; s.innerHTML = `<i></i>${L("Not synced yet")}`; }
   // sous-barre
-  const nav = UI.page !== "members" && UI.page !== "craft";
+  const nav = UI.page !== "members" && UI.page !== "craft" && UI.page !== "logs";
   ["#navPrev", "#navNext", "#navToday"].forEach(id => { $(id).hidden = !nav; });
   // Loots : pas de « Today » (le lockout se choisit par les flèches ou la liste)
   if (UI.page === "loots") $("#navToday").hidden = true;
@@ -697,6 +698,9 @@ function renderTop() {
     // lockout du tri des loots (jamais dans le futur ; « All » = pas de filtre)
     if (UI.lootWeek) $("#subTitle").innerHTML = weekLabelHtml(UI.lootWeek); else $("#subTitle").textContent = L("All lockouts");
     renderLootFilter();
+  } else if (UI.page === "logs") {
+    $("#subTitle").textContent = L("Warcraft Logs");
+    $("#subInfo").textContent = L("Reports of the guild on Warcraft Logs · click a report to open it · past events of the Calendar show their logs");
   } else if (UI.page === "craft") {
     $("#subTitle").textContent = L("Crafts");
     $("#subInfo").textContent = L("All the recipes of the game (ProfDB export) · the four searches add up · hover a craft for its tooltip");
@@ -1152,7 +1156,7 @@ function renderCalendar() {
       const lockNow = weekStart(Math.floor(Date.now() / 1000));
       const archived = ev => ev.chId === mainArchive() || ev.chId === commuArchive() || ev.start < lockNow;
       const evCls = ev => (isCommuEvent(ev) ? " commu" : "") + (archived(ev) ? (isCommuEvent(ev) ? " carch" : " march") : "");
-      const lines = evs.slice(0, 4).map(ev => `<div class="ev${evCls(ev)}${eventDone(ev) ? " done" : ""}${eventDone(ev) && myStatus(ev) && myStatus(ev) !== "absence" && myCompSpot(ev) === false ? " benched" : ""}" data-evopen="${ev.id}" title="${esc(eventLabel(ev))}">${new Date(ev.start * 1000).toLocaleTimeString(LOC(), { hour: "2-digit", minute: "2-digit" })}  ${esc(ev.title)}${myStatusIcon(ev)}</div>`).join("");
+      const lines = evs.slice(0, 4).map(ev => `<div class="ev${evCls(ev)}${eventDone(ev) ? " done" : ""}${eventDone(ev) && myStatus(ev) && myStatus(ev) !== "absence" && myCompSpot(ev) === false ? " benched" : ""}${wclIcon(ev) ? " haslog" : ""}" data-evopen="${ev.id}" title="${esc(eventLabel(ev))}">${new Date(ev.start * 1000).toLocaleTimeString(LOC(), { hour: "2-digit", minute: "2-digit" })}  ${esc(ev.title)}${myStatusIcon(ev)}${wclIcon(ev, !!myStatusIcon(ev))}</div>`).join("");
       const note = ((ST.notes || {})[String(key)] || {}).text;
       const acting = calAct && calAct.day === String(key) ? " acting" : "";
       // note du jour : à droite du numéro, sur une ligne (police réduite, puis défilement si trop longue : fitDayNotes)
@@ -1238,7 +1242,7 @@ function dayMenu(day, ts, evs) {
     // clic : fenêtre de réaction (inscription, absence…) ; officiers : modifier / supprimer
     // compo visible : vert comme dans la case (plus léger si je suis sur le banc)
     const done = eventDone(ev), bench = done && myStatus(ev) && myStatus(ev) !== "absence" && myCompSpot(ev) === false;
-    h += `<button class="dbtn devt${evBarCls(ev)}${done ? " done" : ""}${bench ? " benched" : ""}" data-evreact="${ev.id}" data-help="${esc(eventLabel(ev))}"><span class="dt">${tm}</span><span class="dl">${esc(ev.title)}</span>${myStatusIcon(ev)}</button>`;
+    h += `<button class="dbtn devt${evBarCls(ev)}${done ? " done" : ""}${bench ? " benched" : ""}" data-evreact="${ev.id}" data-help="${esc(eventLabel(ev))}"><span class="dt">${tm}</span><span class="dl">${esc(ev.title)}</span>${wclIcon(ev)}${myStatusIcon(ev)}</button>`;
   }
   return h;
 }
@@ -1323,7 +1327,7 @@ const MONTHS2_EN = ["Ja", "Fe", "Ma", "Ap", "Ma", "Ju", "Ju", "Au", "Se", "Oc", 
 const MONTHS2_FR = ["Ja", "Fé", "Ma", "Av", "Ma", "Jn", "Jl", "Ao", "Se", "Oc", "No", "Dé"];
 const MONTHS2 = new Proxy([], { get: (_, k) => (LANG === "fr" ? MONTHS2_FR : MONTHS2_EN)[k] });
 function showPicker() {
-  if (UI.page === "members" || UI.page === "craft") return;
+  if (UI.page === "members" || UI.page === "craft" || UI.page === "logs") return;
   if (UI.page === "loots") return showLootWeekList();
   if (UI.page === "comps") return showLockoutList();
   if (UI.page === "assigns") return showAssignCompList();
