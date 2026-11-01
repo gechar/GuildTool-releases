@@ -21,3 +21,17 @@ body.gtweb .winctl, body.gtweb #grip { display: none !important; }
 #webWow .hot { background: var(--accent); border-color: var(--accent); color: #fff; }
 #webWow .hot:hover { filter: brightness(1.1); background: var(--accent); }
 #webWow.warn { padding: 3px; }
+/* rappel : données du jeu de plus de 24 h */
+#webStale { z-index: 300; }
+.wsbox { width: 440px; }
+.wsbox .wsup { padding: 16px; font-size: 18px; font-weight: 800; letter-spacing: .04em; }
+.wsbox.busy { cursor: progress; }
+.wsbox.busy .btn { opacity: .5; pointer-events: none; }
+.wsfoot { display: flex; justify-content: space-between; font-size: 11.5px; }
+.wsfoot a { color: var(--mute); cursor: pointer; }
+.wsfoot a:hover { color: var(--hl); text-shadow: 0 0 6px rgba(var(--hl-rgb), .6); }
+.wsrow { display: flex; gap: 6px; }
+.wsrow[hidden] { display: none; }
+.wsrow input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--border); background: var(--input); color: var(--text); font: inherit; }
+.wsrow .btn { display: flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 11.5px; }
+.wsrow svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }

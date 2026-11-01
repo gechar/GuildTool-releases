@@ -50,6 +50,15 @@ window.GT_WEB = true;
     "Game data sent by GuildTool Sync (the small app next to the clock), read again every 20 s. It also writes the file of the addon: /reload in game to load the changes.":
       "Données du jeu envoyées par GuildTool Sync (la petite appli près de l'horloge), relues toutes les 20 s. Il écrit aussi le fichier de l'addon : /reload en jeu pour charger les changements.",
     "Game data from GuildTool Sync.": "Données du jeu venant de GuildTool Sync.",
+    "Game data out of date": "Données du jeu à mettre à jour", "Update": "Mettre à jour",
+    "Your game data was last read {0}. Update it so the guild sees your latest characters, gear and professions.":
+      "Tes données du jeu ont été lues pour la dernière fois le {0}. Mets-les à jour pour que la guilde voie tes derniers persos, stuff et métiers.",
+    "Reads the folder {0} again (the browser asks for access).": "Relit le dossier {0} (le navigateur demande l'accès).",
+    "Choose the folder {0} again in the window that opens (the browser never gives its full path, so it cannot be read again without asking).":
+      "Choisis de nouveau le dossier {0} dans la fenêtre qui s'ouvre (le navigateur ne donne jamais son chemin complet, il ne peut donc pas le relire sans demander).",
+    "Change Path": "Changer de dossier", "Later": "Plus tard", "Browse…": "Parcourir…",
+    "Last folder (the browser only gives its name, not its full path)": "Dernier dossier (le navigateur ne donne que son nom, pas son chemin complet)",
+    "Game data updated.": "Données du jeu mises à jour.",
   });
   const T = (s, ...a) => L(s, ...a);
   const escH = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -291,6 +300,79 @@ window.GT_WEB = true;
     }
   });
 
+  // ------------------------------------------------------------ rappel : données du jeu de plus de 24 h
+  // Dossier lié sans accès ou copie importée relus il y a plus de 24 h : fenêtre avec un gros bouton Update.
+  // Lié : accès redemandé au même dossier (rien à choisir). Importé : le navigateur oblige à choisir le dossier (il ne
+  // donne jamais son chemin complet, seulement son nom), la fenêtre de choix s'ouvre directement.
+  // « Change Path » : nom du dernier dossier + bouton de choix d'un autre dossier. Une fois par visite (« Later »).
+  const STALE = 24 * 3600 * 1000;
+  let staleShown = false;
+  const isStale = () => (files.mode === "import" || (files.mode === "linked" && !files.connected))
+    && (!files.t || Date.now() - files.t > STALE);
+  async function updateLinked(h) {
+    if (!h || (await h.requestPermission({ mode: "readwrite" })) !== "granted") return null;
+    return mountLinked(h);
+  }
+  async function updateImport() {
+    const list = await input({ webkitdirectory: true, multiple: true });
+    if (!list) return null;
+    const m = await mountImport(list);
+    if (m.ok) await checkImportAddon();
+    return m;
+  }
+  function staleGate() {
+    if (staleShown || !isStale() || typeof ST === "undefined" || !ST || document.querySelector(".gate")) return;
+    staleShown = true;
+    const g = document.createElement("div");
+    g.id = "webStale"; g.className = "gate";
+    const when = files.t ? new Date(files.t).toLocaleString(LOC(), { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : "?";
+    g.innerHTML = `<div class="gatebox wsbox"><h2>${T("Game data out of date")}</h2>
+      <p>${T("Your game data was last read {0}. Update it so the guild sees your latest characters, gear and professions.", escH(when))}</p>
+      <button class="btn pri wsup" data-wsup="1">${T("Update")}</button>
+      <div class="help">${escH(T(files.mode === "linked" ? "Reads the folder {0} again (the browser asks for access)."
+        : "Choose the folder {0} again in the window that opens (the browser never gives its full path, so it cannot be read again without asking).", files.label))}</div>
+      <p class="ko" id="wsErr" hidden></p>
+      <div class="wsfoot"><a class="wspath" data-wspath="1">${T("Change Path")}</a><a class="wslater" data-wslater="1">${T("Later")}</a></div>
+      <div class="wsrow" id="wsRow" hidden><input id="wsPath" readonly value="${escH(files.label)}" data-help="${escH(T("Last folder (the browser only gives its name, not its full path)"))}">
+        <button class="btn small" data-wsbrowse="1">${FOLDER_ICO}${T("Browse…")}</button></div></div>`;
+    document.body.appendChild(g);
+    const box = g.querySelector(".wsbox"), err = g.querySelector("#wsErr");
+    g.addEventListener("click", async e => {
+      if (box.classList.contains("busy")) return;
+      const t = e.target.closest("[data-wsup], [data-wspath], [data-wslater], [data-wsbrowse]");
+      if (!t) return;
+      if (t.dataset.wslater) { g.remove(); return; }
+      if (t.dataset.wspath) { const r = g.querySelector("#wsRow"); r.hidden = !r.hidden; return; }
+      err.hidden = true;
+      let m = null, browse = !!t.dataset.wsbrowse || files.mode === "import";
+      try {
+        if (!browse) {
+          // lié : même dossier ; oublié par le navigateur : à choisir de nouveau
+          const h = await kvGet("wow");
+          if (h) { box.classList.add("busy"); m = await updateLinked(h); } else browse = true;
+        }
+        if (browse) {
+          // autre dossier : même façon de lire que maintenant (lié si possible, sinon copie)
+          if (files.mode === "linked" && "showDirectoryPicker" in window) {
+            let h;
+            try { h = await window.showDirectoryPicker({ id: "gtwow", mode: "readwrite" }); } catch (x) { return; }
+            box.classList.add("busy");
+            m = await mountLinked(h);
+          } else {
+            box.classList.add("busy");
+            m = await updateImport();
+          }
+        }
+      } catch (x) { m = { ok: false, error: x.message }; }
+      box.classList.remove("busy");
+      if (!m) return;
+      if (!m.ok) { err.textContent = m.error; err.hidden = false; return; }
+      g.remove();
+      toast(T("Game data updated."));
+      reload();
+    });
+  }
+
   // ------------------------------------------------------------ démarrage
   const booted = {};
   booted.p = new Promise((res, rej) => { booted.res = res; booted.rej = rej; });
@@ -338,6 +420,9 @@ window.GT_WEB = true;
     window.dispatchEvent(new Event("pywebviewready"));
     checkImportAddon();
     setInterval(() => worker.postMessage({ type: "tick" }), 5000);
+    // rappel des données du jeu : après les fenêtres de démarrage (connexion…), puis vérifié chaque minute
+    setTimeout(staleGate, 1500);
+    setInterval(staleGate, 60000);
     if (logged) {
       // retour de Discord : même suite que le bouton de connexion de l'exe
       for (let i = 0; i < 300 && !ST; i++) await new Promise(r => setTimeout(r, 100));

@@ -1013,7 +1013,9 @@ function flowRaidBuffs(root) {
   }
 }
 let flowTimer = null;
-window.addEventListener("resize", () => { clearTimeout(flowTimer); flowTimer = setTimeout(() => { if (UI.page === "comps") renderComps(); else if (UI.page === "calendar") fitDayNotes(); }, 150); });
+window.addEventListener("resize", () => { clearTimeout(flowTimer); flowTimer = setTimeout(() => { if (UI.page === "comps") renderComps(); else if (UI.page === "calendar") { calFit(); fitDayNotes(); } }, 150); });
+// calendrier : largeur suivie tout de suite (sans attendre la fin du redimensionnement)
+window.addEventListener("resize", () => { if (UI.page === "calendar") calFit(); });
 
 // ---------- liste de droite
 const CMP = {
@@ -1193,13 +1195,24 @@ function renderCalendar() {
   $("#cal").innerHTML = head + `<div class="calweeks" id="calWeeks">${html}</div>`;
   $("#cal").classList.toggle("selecting", absMode);
   fitDayNotes();
+  calFit();
   const box = $("#calWeeks");
-  box.style.setProperty("--rowh", Math.max(70, box.clientHeight / 5) + "px");
   if (UI.calJump) { calScrollTo(UI.calJump); UI.calJump = null; }
   else if (keep !== null) box.scrollTop = keep;
   else calScrollTo(calClamp(new Date().getFullYear() * 100 + new Date().getMonth()));
   box.addEventListener("scroll", calScrolled, { passive: true });
   calScrolled();
+}
+// hauteur des semaines (5 visibles) et largeur du calendrier : cases de 1,6 de large pour 1 de haut au plus
+const CAL_RATIO = 1.6;
+function calFit() {
+  const cal = $("#cal"), box = $("#calWeeks");
+  if (!box) return;
+  const rowh = Math.max(70, box.clientHeight / 5), old = parseFloat(box.style.getPropertyValue("--rowh"));
+  const pos = old ? box.scrollTop / old : null;   // même semaine en haut quand la hauteur change
+  box.style.setProperty("--rowh", rowh + "px");
+  if (pos !== null && old !== rowh) box.scrollTop = pos * rowh;
+  cal.style.maxWidth = Math.round(7 * CAL_RATIO * rowh + box.offsetWidth - box.clientWidth) + "px";
 }
 // ---------- Menu d'un jour (survol) : boutons d'1/4 de case, empilés, défilants
 //   Note (tous, partagée avec la guilde) · +Event Main Raid (officiers) · event communautaire (tous) ·
