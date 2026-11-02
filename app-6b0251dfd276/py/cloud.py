@@ -13,6 +13,7 @@ import hashlib
 import http.server
 import json
 import os
+import gzip
 import secrets
 import time
 import urllib.error
@@ -53,8 +54,12 @@ def _dpapi(data, encrypt):
 
 
 # ---------------------------------------------------------------- HTTP
+GZ_MAGIC = bytes((0x1F, 0x8B))          # début d'un contenu gzip
+
+
 def _http(url, body=None, headers=None, method=None, raw=None, timeout=30, binary=False):
-    h = {"User-Agent": UA, **(headers or {})}
+    # réponses compressées (JSON ~5x plus petit) ; le navigateur (version web) décompresse lui-même
+    h = {"User-Agent": UA, "Accept-Encoding": "gzip", **(headers or {})}
     data = raw
     if body is not None:
         data = json.dumps(body).encode()
@@ -63,11 +68,16 @@ def _http(url, body=None, headers=None, method=None, raw=None, timeout=30, binar
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             content = r.read()
+            if content[:2] == GZ_MAGIC and "gzip" in (r.headers.get("Content-Encoding") or ""):
+                content = gzip.decompress(content)
             if binary:
                 return content
             return json.loads(content) if content else None
     except urllib.error.HTTPError as e:
-        text = e.read().decode("utf-8", "replace")
+        text = e.read()
+        if text[:2] == GZ_MAGIC:
+            text = gzip.decompress(text)
+        text = text.decode("utf-8", "replace")
         try:
             j = json.loads(text)
             msg = j.get("error_description") or j.get("error") or j.get("message") or j.get("msg") if isinstance(j, dict) else j
@@ -279,9 +289,27 @@ class Cloud:
             h["Prefer"] = prefer
         return _http("%s/rest/v1/%s" % (self.conf["url"], path), body, h, method=method)
 
-    def pull_docs(self, since):
-        rows = self._rest("docs?select=id,t,data&guild_id=eq.%s&t=gt.%d" % (self.guild_id, int(since))) or []
-        return {r["id"]: (int(r["t"]), r["data"]) for r in rows}
+    def _in(self, names):
+        return urllib.parse.quote(",".join('"%s"' % str(n).replace('"', "") for n in names))
+
+    def pull_docs(self, since, known=None):
+        """{id: (t, data)} des docs changés après since. known {id: t déjà reçu} : d'abord les seules dates (la fenêtre
+        de recouvrement relit toujours les derniers docs), puis les données des seuls docs nouveaux ; (t, None) sinon."""
+        q = "docs?select=%s&guild_id=eq.%s&t=gt.%d"
+        if known is None:
+            rows = self._rest(q % ("id,t,data", self.guild_id, int(since))) or []
+            return {r["id"]: (int(r["t"]), r["data"]) for r in rows}
+        out = {r["id"]: (int(r["t"]), None) for r in self._rest(q % ("id,t", self.guild_id, int(since))) or []}
+        new = [k for k, (t, _) in out.items() if int(known.get(k) or 0) < t]
+        if len(new) > 40:                        # beaucoup de nouveaux (premier Sync) : tout d'un coup
+            rows = self._rest(q % ("id,t,data", self.guild_id, int(since))) or []
+        elif new:
+            rows = self._rest("docs?select=id,t,data&guild_id=eq.%s&id=in.(%s)" % (self.guild_id, self._in(new))) or []
+        else:
+            rows = []
+        for r in rows:
+            out[r["id"]] = (int(r["t"]), r["data"])
+        return out
 
     def get_doc(self, doc_id):
         """Un doc tel qu'il est sur le serveur maintenant : (t, data), (0, None) s'il n'existe pas."""
@@ -293,8 +321,18 @@ class Cloud:
         for i in range(0, len(rows), 200):
             self._rest("docs", rows[i:i + 200], prefer="resolution=merge-duplicates,return=minimal")
 
-    def pull_chars(self, since):
-        return self._rest("chars?select=name,discord_id,data,t&guild_id=eq.%s&t=gt.%d" % (self.guild_id, int(since))) or []
+    def pull_chars(self, since, known=None):
+        """Persos partagés changés après since ; known {nom: t déjà reçu} : données des seuls persos nouveaux (comme pull_docs)."""
+        q = "chars?select=%s&guild_id=eq.%s&t=gt.%d"
+        if known is None:
+            return self._rest(q % ("name,discord_id,data,t", self.guild_id, int(since))) or []
+        stamps = self._rest(q % ("name,t", self.guild_id, int(since))) or []
+        new = [r["name"] for r in stamps if int(known.get(r["name"]) or 0) < int(r["t"])]
+        if len(new) > 40:
+            return self._rest(q % ("name,discord_id,data,t", self.guild_id, int(since))) or []
+        if not new:
+            return []
+        return self._rest("chars?select=name,discord_id,data,t&guild_id=eq.%s&name=in.(%s)" % (self.guild_id, self._in(new))) or []
 
     def push_chars(self, chars, hidden):
         """Mes persos partagés (upsert) ; les persos cachés sont retirés du serveur."""
@@ -303,8 +341,7 @@ class Cloud:
                      "data": d, "t": int(time.time())} for n, d in chars.items()]
             self._rest("chars", rows, prefer="resolution=merge-duplicates,return=minimal")
         if hidden:
-            names = ",".join('"%s"' % n.replace('"', "") for n in hidden)
-            self._rest("chars?guild_id=eq.%s&owner=eq.%s&name=in.(%s)" % (self.guild_id, self.user_id, urllib.parse.quote(names)),
+            self._rest("chars?guild_id=eq.%s&owner=eq.%s&name=in.(%s)" % (self.guild_id, self.user_id, self._in(hidden)),
                        method="DELETE")
 
     def members(self):

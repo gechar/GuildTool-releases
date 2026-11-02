@@ -2478,7 +2478,8 @@ class Bridge:
     def _sync_docs(self, marks, stats):
         cl = self._cloud
         seen = marks.setdefault("seen", {})
-        remote_docs = cl.pull_docs(max(0, marks["docs"] - 120))
+        # fenêtre de 2 min : seules les dates sont relues, les données seulement pour les docs pas encore reçus
+        remote_docs = cl.pull_docs(max(0, marks["docs"] - 120), seen)
         local = self._cloud_docs()
         for doc_id, (t, value) in sorted(remote_docs.items(), key=lambda kv: kv[0] != "phases"):
             # déjà reçu (la fenêtre de 2 min relit les derniers docs)
@@ -2831,7 +2832,8 @@ class Bridge:
                 sent[n] = int(time.time())
         store = self._data.setdefault("cloudChars", {})
         got = 0
-        for row in cl.pull_chars(max(0, marks["chars"] - 120)):
+        known = {n: int(r.get("t") or 0) for n, r in store.items()}
+        for row in cl.pull_chars(max(0, marks["chars"] - 120), known):
             if int((store.get(row["name"]) or {}).get("t") or 0) < int(row["t"]):
                 got += 1
             store[row["name"]] = {"discord_id": row["discord_id"], "data": row["data"], "t": row["t"]}

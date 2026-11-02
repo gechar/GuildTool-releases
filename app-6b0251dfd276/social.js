@@ -110,11 +110,13 @@ function discordRoleHtml(id) {
 }
 
 const socLegend = () => `<b>${esc(L("Preference Score"))}</b>` + [5, 4, 3, 2, 1].map(i =>
-  `<div class="soclg"><span class="stars on${i}">${SOC_STAR_SVG.repeat(5)}</span>${i} : ${esc(L(SOC_LABELS[i]))}</div>`).join("")
+  `<div class="soclg"><span class="stars on${i} sc${i}">${SOC_STAR_SVG.repeat(5)}</span>${i} : ${esc(L(SOC_LABELS[i]))}</div>`).join("")
   + `<div class="p">${esc(L("Only you see your scores. No score counts as 3."))}</div>`;
+// sans note : affichée comme 3 (elle compte comme 3) ; couleur et opacité selon la note (sc1..sc5, style.css)
 function starsHtml(id, score) {
-  return `<span class="stars" data-socid="${esc(id)}" data-tiphtml="${esc(socLegend())}">${[1, 2, 3, 4, 5].map(i =>
-    `<button class="st${i <= score ? " on" : ""}" data-star="${i}">${SOC_STAR_SVG}</button>`).join("")}</span>`;
+  const shown = score || 3;
+  return `<span class="stars sc${shown}" data-socid="${esc(id)}" data-tiphtml="${esc(socLegend())}">${[1, 2, 3, 4, 5].map(i =>
+    `<button class="st${i <= shown ? " on" : ""}" data-star="${i}">${SOC_STAR_SVG}</button>`).join("")}</span>`;
 }
 
 function renderSocial() {

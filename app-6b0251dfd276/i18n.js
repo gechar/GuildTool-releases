@@ -89,7 +89,7 @@ const FR = {
   "Click: place (selected comp, or first comp of an event signed) · Drag: place · Right-click: link": "Clic : placer (compo sélectionnée, ou 1re compo d'un event où il est inscrit) · Glisser : placer · Clic droit : lier",
   "Click: place (selected comp, or first comp of an event signed) · Drag: place · Right-click: spec": "Clic : placer (compo sélectionnée, ou 1re compo d'un event où il est inscrit) · Glisser : placer · Clic droit : spé",
   "Click: remove · Drag: move or swap": "Clic : retirer · Glisser : déplacer ou échanger",
-  "+{0} more": "+{0} autres",
+  "+{0} more": "+{0} autres", "+{0} events ⇩": "+{0} events ⇩",
   // buffs
   "+Attack power": "+Puissance d'attaque", "Chance of an extra melee attack": "Chance d'une attaque de mêlée supplémentaire", "+Agility": "+Agilité",
   "-20% threat": "-20 % de menace", "+Strength": "+Force", "Restores mana every 2 sec": "Rend du mana toutes les 2 s", "+3% melee and ranged crit": "+3 % de critique mêlée et distance",

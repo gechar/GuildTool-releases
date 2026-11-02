@@ -669,14 +669,16 @@ textarea.ef { height: auto; min-height: 46px; padding: 6px 9px; resize: vertical
 .day { backdrop-filter: blur(9px); }
 .day.dark { background-color: var(--lock-a, rgba(14,15,18,.6)); }
 .day.light { background-color: var(--lock-b, rgba(52,54,62,.6)); }
-.day.lockhl { background-image: linear-gradient(rgba(255,255,255,.035), rgba(255,255,255,.035)); }
 .day { border: 1px solid rgba(56,58,67,.6); margin: 0 -1px -1px 0; padding: 4px; display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow: hidden; cursor: pointer; }
 .day:hover { background-image: linear-gradient(rgba(255,255,255,.08), rgba(255,255,255,.08)); }
+/* jour survolé : néon des infobulles, moitié moins lumineux et plus étendu (passe devant ses voisins) */
+.day:hover { z-index: 5; box-shadow: 0 0 5px 0 rgba(var(--hl-rgb, 111,124,255), .35), 0 0 24px 5px rgba(var(--hl-rgb, 111,124,255), .2),
+  0 0 56px 14px rgba(var(--hl-rgb, 111,124,255), .1); }
 .day .dn { font-weight: 700; font-size: 12px; padding: 1px 2px 3px; height: calc(var(--rowh, 120px) / 5 - 6px); flex: none; box-sizing: border-box; }
 .day.out .dn { color: var(--mute); opacity: .5; }
 /* jour présent : fond bleu (comme la semaine actuelle dans la liste des lockouts), texte normal */
 .day.today { background-image: linear-gradient(rgba(111,124,255,.28), rgba(111,124,255,.28)); }
-.ev { display: flex; align-items: center; gap: 6px; padding: 0 5px 0 8px; font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.ev { display: flex; align-items: center; gap: 7px; padding: 0 5px 0 8px; font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   height: calc(var(--rowh, 120px) / 5 - 1px); margin-bottom: -1px; flex: none; box-sizing: border-box;
   background: rgba(var(--evred), .32); border-left: 2px solid rgb(var(--evred)); }
 .ev.done { background: rgba(var(--evgreen), .32); border-left-color: rgb(var(--evgreen)); }
@@ -690,7 +692,11 @@ textarea.ef { height: auto; min-height: 46px; padding: 6px 9px; resize: vertical
 /* archivés (lockouts passés) : barre de gauche de la même couleur que les autres, sans le fond */
 .ev.march, .ev.carch { background: none !important; }
 .ev:hover { filter: brightness(1.25); }
-.day .more { margin-top: auto; text-align: right; color: var(--mute); font-size: 10px; font-weight: 600; }
+/* events de la case : heure grisée puis titre (comme le menu du survol) ; plus de 4 : liste qui défile, barre visible */
+.ev .dt { color: var(--mute); flex: none; } .ev .dl { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.day .evs { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.day .evs.over { overflow-y: scroll; }
+.day .dmore { flex: none; margin-left: auto; color: var(--mute); font-size: 10px; font-weight: 600; white-space: nowrap; }
 
 /* ---------- Members ---------- */
 #page-members.on { display: flex; flex-direction: column; padding: 10px; gap: 6px; }
@@ -1505,19 +1511,25 @@ body.pg-loots .sub .vbtns { left: max(calc(25% + 190px), 590px); }
 .socn { display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-transform: none; letter-spacing: 0; }
 .socn b { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .socn small { min-width: 0; color: var(--mute); font-size: 10px; text-transform: none; letter-spacing: 0; font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
-/* étoiles : contour jaune ; survol = celle-ci et celles de gauche en blanc translucide ; note choisie = jaune */
-.stars { display: inline-flex; gap: 1px; }
+/* étoiles : couleur de la note (1-2 rouge, 3 jaune, 4-5 vert), plus pâles vers 3 (2 et 4 : -20 %, 3 : -40 %) ;
+   survol = celle-ci et celles de gauche en blanc translucide, opacité pleine */
+.stars { display: inline-flex; gap: 1px; --sc: #f5c542; }
+.stars.sc1, .stars.sc2 { --sc: rgb(var(--evred)); }
+.stars.sc4, .stars.sc5 { --sc: rgb(var(--evgreen)); }
+.stars.sc2 svg, .stars.sc4 svg { opacity: .8; }
+.stars.sc3 svg { opacity: .6; }
+.stars:hover svg { opacity: 1; }
 .stars .st { width: 22px; height: 22px; display: grid; place-items: center; padding: 0; }
 .stars svg { width: 18px; height: 18px; }
-.stars svg path { fill: transparent; stroke: #f5c542; stroke-width: 1.6; stroke-linejoin: round; }
-.stars .st.on path { fill: #f5c542; }
+.stars svg path { fill: transparent; stroke: var(--sc); stroke-width: 1.6; stroke-linejoin: round; }
+.stars .st.on path { fill: var(--sc); }
 .stars:hover .st path { fill: transparent; }
 .stars .st:hover path, .stars .st:has(~ .st:hover) path { fill: rgba(255,255,255,.5); }
 /* légende (infobulle) */
 .soclg { display: flex; align-items: center; gap: 6px; }
 .soclg .stars svg { width: 12px; height: 12px; }
 .soclg .stars.on1 svg:nth-child(-n+1) path, .soclg .stars.on2 svg:nth-child(-n+2) path, .soclg .stars.on3 svg:nth-child(-n+3) path,
-.soclg .stars.on4 svg:nth-child(-n+4) path, .soclg .stars.on5 svg:nth-child(-n+5) path { fill: #f5c542; }
+.soclg .stars.on4 svg:nth-child(-n+4) path, .soclg .stars.on5 svg:nth-child(-n+5) path { fill: var(--sc); }
 
 /* Members : rôle Discord (couleur du rôle, couronne du propriétaire) ; membres du serveur sans perso, en bas */
 .mrow .dr { display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; font-size: 11.5px; font-weight: 600; max-width: 100%; }

@@ -1179,12 +1179,13 @@ function renderCalendar() {
       const lockNow = weekStart(Math.floor(Date.now() / 1000));
       const archived = ev => ev.chId === mainArchive() || ev.chId === commuArchive() || ev.start < lockNow;
       const evCls = ev => (isCommuEvent(ev) ? " commu" : "") + (archived(ev) ? (isCommuEvent(ev) ? " carch" : " march") : "");
-      const lines = evs.slice(0, 4).map(ev => `<div class="ev${evCls(ev)}${eventDone(ev) ? " done" : ""}${eventDone(ev) && myStatus(ev) && myStatus(ev) !== "absence" && myCompSpot(ev) === false ? " benched" : ""}${wclIcon(ev) ? " haslog" : ""}" data-evopen="${ev.id}" title="${esc(eventLabel(ev))}">${new Date(ev.start * 1000).toLocaleTimeString(LOC(), { hour: "2-digit", minute: "2-digit" })}  ${esc(ev.title)}${myStatusIcon(ev)}${wclIcon(ev, !!myStatusIcon(ev))}</div>`).join("");
+      // tous les events (heure grisée puis titre, comme le menu du survol) ; plus de 4 : liste qui défile, barre toujours visible
+      const lines = evs.length ? `<div class="evs${evs.length > 4 ? " over" : ""}">` + evs.map(ev => `<div class="ev${evCls(ev)}${eventDone(ev) ? " done" : ""}${eventDone(ev) && myStatus(ev) && myStatus(ev) !== "absence" && myCompSpot(ev) === false ? " benched" : ""}${wclIcon(ev) ? " haslog" : ""}" data-evopen="${ev.id}" title="${esc(eventLabel(ev))}"><span class="dt">${new Date(ev.start * 1000).toLocaleTimeString(LOC(), { hour: "2-digit", minute: "2-digit" })}</span><span class="dl">${esc(ev.title)}</span>${myStatusIcon(ev)}${wclIcon(ev, !!myStatusIcon(ev))}</div>`).join("") + "</div>" : "";
       const note = ((ST.notes || {})[String(key)] || {}).text;
       const acting = calAct && calAct.day === String(key) ? " acting" : "";
       // note du jour : à droite du numéro, sur une ligne (police réduite, puis défilement si trop longue : fitDayNotes)
       html += `<div class="day${cls}${acting}" data-day="${ts}" data-key="${key}" data-lockout="${lock}">${mname}<span class="dn"><b>${dm}</b>`
-        + `${note ? `<span class="dnote"><span>${esc(note.replace(/\s+/g, " "))}</span></span>` : ""}</span>${lines}${evs.length > 4 ? `<span class="more">${L("+{0} more", evs.length - 4)}</span>` : ""}`
+        + `${note ? `<span class="dnote"><span>${esc(note.replace(/\s+/g, " "))}</span></span>` : ""}${evs.length > 4 ? `<span class="dmore">${L("+{0} events ⇩", evs.length - 4)}</span>` : ""}</span>${lines}`
         + (absDay[key] ? `<div class="dabs">${absDay[key].map(esc).join(", ")}</div>` : "")
         + (absMode ? "" : `<div class="dmenu">${dayMenu(String(key), ts, evs)}${absDay[key] ? `<div class="dabslist"><b>${L("Absent")}</b>${absDay[key].map(n => `<span>${esc(n)}</span>`).join("")}</div>` : ""}</div>`) + `</div>`;
     }
@@ -1258,8 +1259,8 @@ function evBarCls(ev) {
   const archived = ev.chId === mainArchive() || ev.chId === commuArchive() || ev.start < weekStart(Math.floor(Date.now() / 1000));
   return (isCommuEvent(ev) ? " commu" : "") + (archived ? (isCommuEvent(ev) ? " carch" : " march") : "");
 }
-// ordre des events d'un jour (case et menu du survol) : à l'heure ; même heure : Main Raid d'abord, puis par id
-const dayEvOrder = (x, y) => x.start - y.start || isMainEvent(y) - isMainEvent(x) || String(x.id).localeCompare(String(y.id));
+// ordre des events d'un jour (case et menu du survol) : Main Raids d'abord, puis à l'heure, puis par id
+const dayEvOrder = (x, y) => isMainEvent(y) - isMainEvent(x) || x.start - y.start || String(x.id).localeCompare(String(y.id));
 function dayMenu(day, ts, evs) {
   const a = calAct && calAct.day === day ? calAct : null;
   const field = (step, ph, val) => `<div class="dbtn form"><input class="dinput" data-dstep="${step}" placeholder="${esc(L(ph))}" value="${esc(val || "")}" spellcheck="false"></div>`;
@@ -2353,10 +2354,6 @@ document.addEventListener("mouseover", e => {
   } else if (!$("#picker").hidden && !pickerTimer) {
     pickerTimer = setTimeout(() => { $("#picker").hidden = true; pickerTimer = null; }, 500);
   }
-  // calendrier : survol d'un jour = tout son lockout légèrement éclairé
-  const day = e.target.closest("[data-lockout]");
-  document.querySelectorAll(".day.lockhl").forEach(x => { if (!day || x.dataset.lockout !== day.dataset.lockout) x.classList.remove("lockhl"); });
-  if (day) document.querySelectorAll(`.day[data-lockout="${day.dataset.lockout}"]`).forEach(x => x.classList.add("lockhl"));
   // infobulle déjà en HTML (attribut échappé à la construction)
   const th = e.target.closest("[data-tiphtml]");
   if (th) return showTip(th.dataset.tiphtml, th);
