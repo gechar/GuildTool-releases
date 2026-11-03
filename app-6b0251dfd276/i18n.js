@@ -77,7 +77,7 @@ const FR = {
   "No players with a Discord tag in this comp.": "Aucun joueur avec un tag Discord dans cette compo.",
   "Copied {0} mentions. Paste them in Discord.": "{0} mentions copiées. Colle-les dans Discord.", "Copy failed:": "Échec de la copie :",
   "Link to a Discord tag…": "Lier à un tag Discord…", "Change Discord link…": "Changer le lien Discord…", "Clear spec": "Effacer la spé",
-  "Main spec": "Spé principale", "Off spec": "Spé secondaire", "from the talents": "d'après les talents", "click to change": "clic pour changer", "Main": "Main", "Main²": "Main²", "None": "Aucun",
+  "Main spec": "Spé principale", "Off spec": "Spé secondaire", "from the talents": "d'après les talents", "click to change": "clic pour changer", "No logs in this phase ({0} in all the phases: choose ALL).": "Aucun log dans cette phase ({0} dans toutes les phases : choisis ALL).", "Main": "Main", "Main²": "Main²", "None": "Aucun",
   "Main character of the player (one Main and one Main² per player) · click to change": "Perso principal du joueur (un Main et un Main² par joueur) · clic pour changer",
   "Off Spec: which spec?": "Off Spec : quelle spé ?", "Off Spec: which spec": "Off Spec : quelle spé",
   "Shown for its Off Spec: only its Off Spec loots of the chosen roles": "Montré pour son Off Spec : seulement ses loots Off Spec des rôles choisis", "automatic": "automatique",

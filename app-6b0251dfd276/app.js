@@ -571,15 +571,16 @@ function renderViewBtns() {
   const tab = UI.lootTab || "all";
   $("#viewBtns").innerHTML = lootViews().map(([k, l]) => `<button class="ltab${tab === k ? " on" : ""}" data-ltab="${k}"><span>${L(l)}</span></button>`).join("");
 }
-// Loots : sous-onglets à gauche, sélecteur de phase au milieu (comme Raid Comps) ; s'il touche le dernier sous-onglet,
-// décalé à droite (léger écart) tant qu'il ne touche pas le lockout (ou la recherche)
+// Loots / Logs : sélecteur de phase au milieu (comme Raid Comps) ; s'il touche ce qui est à sa gauche (dernier
+// sous-onglet, titre), décalé à droite (léger écart) tant qu'il ne touche pas ce qui est à sa droite (lockout,
+// recherche, texte d'aide)
 function layoutLootSub() {
-  const sel = $("#lootPhSel"), sub = sel && sel.parentElement;
-  if (!sel || UI.page !== "loots" || sel.hidden) { if (sel) sel.style.left = ""; return; }
+  const sel = $("#lootPhSel"), sub = sel && sel.parentElement, logs = UI.page === "logs";
+  if (!sel || (UI.page !== "loots" && !logs) || sel.hidden) { if (sel) sel.style.left = ""; return; }
   const box = sub.getBoundingClientRect(), w = sel.offsetWidth, GAP = 14;
-  const tabs = [...$("#viewBtns").children], last = tabs.length && tabs[tabs.length - 1].getBoundingClientRect();
+  const tabs = logs ? [$("#subTitle")] : [...$("#viewBtns").children], last = tabs.length && tabs[tabs.length - 1].getBoundingClientRect();
   const minL = last ? last.right - box.left + GAP : 0;
-  const right = [$("#navPrev"), $("#lootSearch"), $("#tabLookBtn")].find(e => e && !e.hidden && e.offsetWidth);
+  const right = (logs ? [$("#subInfo"), $("#tabLookBtn")] : [$("#navPrev"), $("#lootSearch"), $("#tabLookBtn")]).find(e => e && !e.hidden && e.offsetWidth);
   const maxL = (right ? right.getBoundingClientRect().left - box.left : box.width) - GAP - w;
   sel.style.left = Math.max(0, Math.min(Math.max((box.width - w) / 2, minL), maxL)) + "px";
 }
@@ -698,6 +699,7 @@ function renderTop() {
   if (UI.page !== "loots") $("#lootTypeList").hidden = true;
   if (UI.page === "loots") renderViewBtns();
   document.body.classList.toggle("pg-loots", UI.page === "loots");
+  document.body.classList.toggle("pg-logs", UI.page === "logs");
   $("#phaseWheel").classList.toggle("ro", UI.page === "comps" && !ST.isAdmin);
   document.querySelectorAll(".ptab").forEach(b => b.classList.toggle("on", b.dataset.page === UI.page));
   // nom de la guilde (serveur Discord choisi, renommable par un officier)

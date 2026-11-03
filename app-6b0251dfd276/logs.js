@@ -92,7 +92,8 @@ function renderLogs() {
       <button class="btn small" id="wclRefresh" data-help="Read the list again on Warcraft Logs">↻ ${L("Refresh")}</button>
       <span class="lgsrc">${w.source ? `<a data-wclsrc="1">${esc(w.source)}</a>` : ""}${w.checked ? " · " + L("read at {0}", new Date(w.checked).toLocaleTimeString(LOC(), { hour: "2-digit", minute: "2-digit" })) : ""}</span></div>
     <div class="logswrap">${rows ? `<table class="logs"><thead><tr>${["lraid", "ldesc", "ldate", "ldur", "lvis"].map(th).join("")}</tr></thead><tbody>${rows}</tbody></table>`
-      : `<div class="empty-list">${L(w.error ? "No logs." : (w.reports || []).length ? "No logs in this phase." : "No logs yet: they are read by the guild server (log in, then Sync).")}</div>`}</div>`;
+      : `<div class="empty-list">${w.error ? L("No logs.") : (w.reports || []).length ? L("No logs in this phase ({0} in all the phases: choose ALL).", (w.reports || []).length)
+        : L("No logs yet: they are read by the guild server (log in, then Sync).")}</div>`}</div>`;
 }
 // sélecteur de phase : dans la sous-barre (#lootPhSel, app.js)
 document.addEventListener("click", e => {
