@@ -34,9 +34,18 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .pagetabs { display: flex; gap: 2px; align-self: stretch; margin-left: 10px; }
 .ptab { padding: 0 16px; color: var(--mute); border-bottom: 2px solid transparent; font-weight: 600; font-size: 12.5px; }
 .ptab:hover { color: var(--text); }
+/* onglets : fine ligne entre deux noms (sans toucher le haut ni la sous-barre) ; choisi ou survolé : nom et icône
+   agrandis de 30 % (sans bouger les voisins) */
+.ptab { position: relative; padding: 0 20px; }       /* place pour le nom agrandi */
+.ptab + .ptab::before { content: ""; position: absolute; left: 0; top: 30%; bottom: 30%; width: 1px; background: rgba(255,255,255,.14); pointer-events: none; }
+.ptab .ptl { display: inline-flex; align-items: center; transition: transform .12s; }
+.ptab:hover .ptl, .ptab.on .ptl { transform: scale(1.3); }
 .ptab.on { color: #fff; border-bottom-color: var(--accent); background: var(--sel); }
 .status { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; min-width: 0; overflow: hidden; padding-left: 12px; }
 .pagetabs { flex: none; }
+/* place qui manque : l'état (Last Sync) rétrécit d'abord, le nom de la guilde seulement ensuite (pas tronqué trop tôt) */
+.status { flex-shrink: 1000; }
+.title { flex-shrink: 1; min-width: 1.5em; }
 .st-line { color: var(--mute); font-size: 11px; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
 .st-line .ls { line-height: 1.25; text-align: left; }
 .st-line i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
@@ -706,11 +715,27 @@ textarea.ef { height: auto; min-height: 46px; padding: 6px 9px; resize: vertical
 .mhead > *, .mrow > * { justify-self: center; text-align: center; }
 /* perso : ancré à gauche (icônes de classe alignées puis pseudo) ; niveau : ancré à droite */
 .mhead > :nth-child(1), .mrow > .cn { justify-self: start; text-align: left; padding-left: 4px; }
-.mhead > :nth-child(3), .mrow > .lv { justify-self: end; text-align: right; padding-right: 6px; }
+.mhead > :nth-child(4), .mrow > .lv { justify-self: end; text-align: right; padding-right: 6px; }
 .mrow { cursor: pointer; }
 /* officiers : croix tout à droite pour retirer un perso de la base partagée */
 /* Professions : largeur fixe juste après Attendance (avant : tout le reste de la ligne, contenu centré trop loin) */
-.mhead, .mrow { grid-template-columns: 190px 150px 50px 70px 90px 220px 120px 1fr !important; }
+.mhead, .mrow { grid-template-columns: var(--mcols, 190px 64px 150px 50px 70px 90px 220px 120px 1fr) !important; }
+/* largeur des colonnes : trait à chaque séparation au survol de l'en-tête, à glisser (double-clic : d'origine) */
+.mhead { position: relative; }
+.mhead .mcolh { position: absolute; top: 0; bottom: 0; width: 9px; margin-left: -4.5px; cursor: col-resize; opacity: 0; transition: opacity .12s; z-index: 2; }
+.mhead .mcolh::after { content: ""; position: absolute; left: 4px; top: 3px; bottom: 3px; width: 1px; background: rgba(255,255,255,.35); }
+.mhead:hover .mcolh, .mhead .mcolh.on { opacity: 1; }
+.mhead .mcolh:hover::after, .mhead .mcolh.on::after { background: var(--hl); box-shadow: 0 0 5px rgba(var(--hl-rgb), .7); width: 2px; left: 3.5px; }
+body.mcoldrag, body.mcoldrag * { cursor: col-resize !important; user-select: none; }
+/* Main / Main² (un de chaque par joueur) ; modifiable : clic = choix, case vide en pointillés */
+.mrow .mn { display: flex; justify-content: center; min-width: 0; }
+.mrow .mnb { font-size: 10.5px; font-weight: 800; letter-spacing: .03em; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
+.mrow .mnb.m1 { color: #ffd27a; background: rgba(255,210,122,.14); box-shadow: inset 0 0 0 1px rgba(255,210,122,.45); }
+.mrow .mnb.m2 { color: #c9d1dc; background: rgba(201,209,220,.1); box-shadow: inset 0 0 0 1px rgba(201,209,220,.35); }
+.mrow .mnbox { padding: 0; border: 0; background: none; min-width: 34px; height: 18px; display: grid; place-items: center; border-radius: 3px; cursor: pointer; }
+.mrow .mnbox.add { border: 1px dashed transparent; }
+.mrow:hover .mnbox.add { border-color: rgba(255,255,255,.2); }       /* case vide : seulement au survol de la ligne */
+.mrow .mnbox:hover { box-shadow: 0 0 0 1px var(--hl), 0 0 6px rgba(var(--hl-rgb), .45); }
 .mrow .at { font-weight: 700; } .mrow .at em { font-style: normal; font-weight: 500; color: var(--mute); }
 .mhead::after { content: ""; }
 .mrow .mx { justify-self: end; display: flex; align-items: center; gap: 8px; }
@@ -740,12 +765,29 @@ textarea.ef { height: auto; min-height: 46px; padding: 6px 9px; resize: vertical
 .mrow .dc.mute, .mute { color: var(--mute); }
 /* niveau : centré sous « Level », nombres alignés à droite entre eux */
 .mrow .lv { font-weight: 600; justify-self: center; width: 2.2em; text-align: right; }
-.mhead span:nth-child(3) { text-align: center; }
+.mhead span:nth-child(4) { text-align: center; }
 /* titres de colonne cliquables (critère de tri en tête) ; celui en tête en couleur Highlight */
 .mhead [data-msort] { cursor: pointer; user-select: none; }
 .mhead [data-msort]:hover { color: #fff; }
 .mhead [data-msort].on { color: var(--hl); }
 .mrow .sp { display: flex; gap: 4px; } .mrow .sp img { width: 18px; height: 18px; }
+/* Loots : icône de la spé Off Spec (Compare), perso montré pour son Off Spec */
+.lci .lcos { width: 13px; height: 13px; flex: none; border-radius: 2px; }
+.lchn .lcoff { font-style: normal; font-size: 9.5px; font-weight: 800; color: #b880ff; margin-left: 6px; text-transform: uppercase; letter-spacing: .05em; }
+.eflist .efh { display: block; padding: 4px 8px 2px; color: var(--mute); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.eflist.kinds.osspecs { right: auto; display: flex; flex-direction: row; gap: 4px; padding: 4px; width: max-content; min-width: 0; }
+.eflist.kinds.osspecs button { width: 26px; height: 26px; padding: 0; display: grid; place-items: center; border-radius: 3px; }
+.eflist.kinds.osspecs button img { width: 22px; height: 22px; display: block; }
+.eflist.kinds.osspecs button:hover { box-shadow: 0 0 0 1px var(--hl), 0 0 6px rgba(var(--hl-rgb), .45); }
+.eflist.kinds.osspecs .sptx { font-size: 10px; font-weight: 700; color: var(--mute); }
+/* spés de Members : principale, secondaire ; modifiables (propriétaire / officier) : clic = choix ; case vide = à remplir */
+.mrow .spbox { width: 18px; height: 18px; padding: 0; border: 0; background: none; display: grid; place-items: center; flex: none; border-radius: 3px; }
+.mrow button.spbox { cursor: pointer; }
+.mrow button.spbox:hover { box-shadow: 0 0 0 1px var(--hl), 0 0 6px rgba(var(--hl-rgb), .45); }
+.mrow .spbox .sptx { font-size: 9px; font-weight: 700; color: var(--mute); }
+.mrow .spbox.add { border: 1px solid transparent; background: none; box-sizing: border-box; }
+.mrow:hover .spbox.add { border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.05); }
+.mrow .spbox.add:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.5); }
 .mrow .pf { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mrow .pf em { font-style: normal; color: var(--mute); margin: 0 14px 0 5px; font-size: 13px; line-height: 18px; }
 .mrow .btn { padding: 3px 0; }
@@ -1396,9 +1438,21 @@ body.afull .amain { padding: 4px 6px 6px; }
 /* Loots : vues en onglets (comme les onglets généraux), recherche calée à gauche de l'engrenage,
    Type à gauche de la recherche (dans la même largeur), sélecteur de phase à gauche, flèches du lockout resserrées */
 .sub .vbtns { align-self: stretch; height: 100%; top: 0; transform: translateX(-50%); gap: 2px; }
-.vbtns .ltab { width: auto; height: 100%; padding: 0 16px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--mute); font-weight: 600; font-size: 12.5px; }
+/* sous-onglets de Loots : à gauche ; choisi = cadre de la couleur de surbrillance avec néon fondu (comme les jours
+   du calendrier), texte de la même couleur ; choisi ou survolé : texte agrandi de 30 % (sans bouger les voisins) */
+body.pg-loots .sub .vbtns { left: 12px; transform: none; align-items: center; gap: 4px; }
+.vbtns .ltab { width: auto; height: 26px; padding: 0 18px; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--mute); font-weight: 600; font-size: 12.5px; }
+.vbtns .ltab > span { display: inline-block; transition: transform .12s; }
+.vbtns .ltab:hover > span, .vbtns .ltab.on > span { transform: scale(1.3); }
 .vbtns .ltab:hover { color: var(--text); background: none; }
-.vbtns .ltab.on { color: #fff; border-bottom-color: var(--hl, var(--accent)); background: linear-gradient(180deg, rgba(var(--hl-rgb, 111,124,255),0) 0%, rgba(var(--hl-rgb, 111,124,255),.22) 100%); }
+.vbtns .ltab.on { color: var(--hl); border-color: var(--hl); background: rgba(var(--hl-rgb), .08);
+  box-shadow: 0 0 4px 0 rgba(var(--hl-rgb), .45), 0 0 12px 2px rgba(var(--hl-rgb), .22), 0 0 26px 6px rgba(var(--hl-rgb), .1); }
+/* lockout : à droite, juste à gauche de la recherche (même place pour Compare et History) ; phase : placée par
+   layoutLootSub */
+body.pg-loots .sub #navPrev { margin-left: auto; }
+body.pg-loots .sub #navNext { margin-right: 236px; }
+body.pg-loots .subinfo { display: none; }
+body.pg-loots .sub .lphsel { position: absolute; top: 50%; transform: translateY(-50%); margin: 0; }
 .sub .lsearch { left: auto; right: 44px; width: 230px; }
 .sub .lsearch .ltypebtn { order: -1; flex: none; }
 .sub .lsearch input { flex: 1; min-width: 0; width: auto; }
@@ -1475,8 +1529,6 @@ body:not(.readonly) .bslot { cursor: pointer; }
 /* Loots : sélecteur de phase (style du détail des persos) à droite du lockout */
 .sub .lphsel { margin: 0 0 0 6px; flex-wrap: nowrap; }
 .sub .lphsel[hidden] { display: none; }
-/* onglets de vue décalés : le sélecteur de phase est à droite du lockout */
-body.pg-loots .sub .vbtns { left: max(calc(25% + 190px), 590px); }
 
 /* premier réglage : serveur Discord (obligatoire) au-dessus du dossier du jeu */
 .setupbox h2:not(:first-child) { margin-top: 12px; }
@@ -1526,6 +1578,8 @@ body.pg-loots .sub .vbtns { left: max(calc(25% + 190px), 590px); }
 .stars:hover .st path { fill: transparent; }
 .stars .st:hover path, .stars .st:has(~ .st:hover) path { fill: rgba(255,255,255,.5); }
 /* légende (infobulle) */
+.soclgs { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 8px; font-size: 12px; }
+.soclgs .help { margin: 2px 0 0; }
 .soclg { display: flex; align-items: center; gap: 6px; }
 .soclg .stars svg { width: 12px; height: 12px; }
 .soclg .stars.on1 svg:nth-child(-n+1) path, .soclg .stars.on2 svg:nth-child(-n+2) path, .soclg .stars.on3 svg:nth-child(-n+3) path,

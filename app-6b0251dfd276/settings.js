@@ -87,7 +87,6 @@ function fillSettings() {
   renderGuildKey();
   renderGuildAdmin();
   renderGuildLook();
-  if (!$("#hooks").contains(document.activeElement)) $("#hooks").innerHTML = (c.webhooks || []).map(hookRow).join("");
   $("#apBase").value = a.base || "#1e1f24";
   $("#apLockA").value = a.lockA || "#0e0f12";
   $("#apLockB").value = a.lockB || "#34363e";
@@ -669,33 +668,11 @@ document.querySelectorAll("#settingsWin [data-cfg]").forEach(el => {
 async function saveCfg(k, v, undoable) {
   const prev = ST.config[k];
   if (prev === v) return;
-  if (undoable) pushUndo(k === "webhooks" ? "Discord channels" : "Connection settings", () => saveCfg(k, prev, false));
+  if (undoable) pushUndo("Connection settings", () => saveCfg(k, prev, false));
   ST.config[k] = v;
   await api().save_config({ [k]: v });
   await reload();
 }
-function hookRow(h) {
-  return `<div class="hook"><input class="hn" placeholder="${L("Name (#channel)")}" value="${esc(h.name || "")}"><input class="hu" placeholder="https://discord.com/api/webhooks/..." value="${esc(h.url || "")}">
-    <button class="ib ht" data-help="Test">✓</button><button class="ib hd" data-help="Delete">×</button></div>`;
-}
-function readHooks() {
-  return [...document.querySelectorAll("#hooks .hook")]
-    .map(r => ({ name: r.querySelector(".hn").value.trim(), url: r.querySelector(".hu").value.trim() }))
-    .filter(h => h.url);
-}
-$("#addHook").addEventListener("click", () => { $("#hooks").insertAdjacentHTML("beforeend", hookRow({})); $("#hooks .hook:last-child .hn").focus(); });
-$("#hooks").addEventListener("change", () => saveCfg("webhooks", readHooks(), true));
-$("#hooks").addEventListener("click", e => {
-  const row = e.target.closest(".hook");
-  if (e.target.closest(".hd")) { row.remove(); saveCfg("webhooks", readHooks(), true); }
-  if (e.target.closest(".ht")) {
-    api().check_webhook(row.querySelector(".hu").value.trim()).then(r => {
-      if (r.ok) { toast(L('Webhook OK: "{0}"', r.name)); const n = row.querySelector(".hn"); if (!n.value) { n.value = r.name; saveCfg("webhooks", readHooks(), true); } }
-      else toast(r.error, true);
-    });
-  }
-});
-
 // ------------------------------------------------------------------ recadrage (fond, raids, cartes et icônes d'assigns)
 let crop = null, cropDone = null;
 // fx : curseurs Opacity / Blurred (image d'une barre de raid, bannière d'un boss), valeurs de départ dans init (a, b)

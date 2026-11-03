@@ -1,12 +1,10 @@
-"""Accès internet : API Raid-Helper (v4), utilisateurs Discord (bot optionnel), webhooks Discord."""
-import base64
+"""Accès internet : API Raid-Helper (v4), utilisateurs Discord (bot optionnel)."""
 import json
 import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
 
 RH_BASE = "https://raid-helper.dev/api/v4"
 DISCORD_API = "https://discord.com/api/v10"
@@ -218,37 +216,6 @@ def discord_username(bot_token, uid):
     """Pseudo Discord unique d'un utilisateur (nécessite un token de bot, sans invitation)."""
     data = _request("%s/users/%s" % (DISCORD_API, uid), {"Authorization": "Bot " + bot_token})
     return (data or {}).get("username")
-
-
-def post_webhook(url, content, user_ids, image_png=None, filename="comp.png"):
-    """Message dans un salon via webhook : texte + mentions qui notifient + image optionnelle."""
-    payload = {
-        "content": content[:2000],
-        "allowed_mentions": {"parse": [], "users": list(dict.fromkeys(user_ids))[:100]},
-    }
-    sep = "&" if "?" in url else "?"
-    url = url + sep + "wait=true"
-    if image_png is None:
-        return _request(url, {"Content-Type": "application/json"}, json.dumps(payload).encode(), "POST")
-    payload["attachments"] = [{"id": 0, "filename": filename}]
-    boundary = uuid.uuid4().hex
-    parts = [
-        ("--%s\r\nContent-Disposition: form-data; name=\"payload_json\"\r\nContent-Type: application/json\r\n\r\n" % boundary).encode()
-        + json.dumps(payload).encode() + b"\r\n",
-        ("--%s\r\nContent-Disposition: form-data; name=\"files[0]\"; filename=\"%s\"\r\nContent-Type: image/png\r\n\r\n" % (boundary, filename)).encode()
-        + image_png + b"\r\n",
-        ("--%s--\r\n" % boundary).encode(),
-    ]
-    return _request(url, {"Content-Type": "multipart/form-data; boundary=" + boundary}, b"".join(parts), "POST", timeout=40)
-
-
-def check_webhook(url):
-    data = _request(url)
-    return {"name": data.get("name"), "channel_id": data.get("channel_id")}
-
-
-def png_from_data_url(data_url):
-    return base64.b64decode(data_url.split(",", 1)[1])
 
 
 def now():

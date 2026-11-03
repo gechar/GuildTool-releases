@@ -7,7 +7,7 @@ const api = () => window.pywebview.api;
 const now = () => Math.floor(Date.now() / 1000);
 const ic = n => `icons/${n}.jpg`;
 const STATUS_TEXT = { primary: "Signed", tentative: "Tentative", late: "Late", bench: "Bench" };
-const SORT_LABEL = { spec: "Spec", class: "Class", player: "Player", alpha: "A-Z", level: "Level", raids: "Raids", loots: "Loots", discord: "Discord", attendance: "Attendance", drole: "Role" };
+const SORT_LABEL = { spec: "Spec", class: "Class", player: "Player", alpha: "A-Z", level: "Level", raids: "Raids", loots: "Loots", discord: "Discord", attendance: "Attendance", drole: "Role", main: "Main" };
 const ASSIGN_SVG = '<svg viewBox="0 0 24 24"><path d="M5 2h10l4 4v6.5l-2 2V7h-3V4H5v16h6l-.4 2H3V2zm2 6h8v1.6H7zm0 3.5h8v1.6H7zm0 3.5h5v1.6H7zm13.3-2.6 1.8 1.8-6.9 6.9-2.5.7.7-2.5z"/></svg>';
 const LOCK_SVG = '<svg viewBox="0 0 24 24"><path d="M17 9V7a5 5 0 0 0-10 0v2H5v13h14V9h-2zm-8 0V7a3 3 0 0 1 6 0v2H9z"/></svg>';
 const POST_SVG = '<svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>';
@@ -45,6 +45,7 @@ function loadUI() {
   if (!ui.membersOrder.includes("spec")) ui.membersOrder.unshift("spec");
   if (!ui.membersOrder.includes("attendance")) ui.membersOrder.push("attendance");
   if (!ui.membersOrder.includes("drole")) ui.membersOrder.push("drole");
+  if (!ui.membersOrder.includes("main")) ui.membersOrder.push("main");
   return ui;
 }
 function saveUI() { try { localStorage.setItem("rp-ui2", JSON.stringify(UI)); } catch (e) { /* stockage indisponible */ } }
@@ -209,8 +210,8 @@ function buildUnits() {
   for (const [name, r] of Object.entries(roster)) {
     // perso inscrit à l'Event Class : montré même sous le niveau minimum
     if (byName[name] || !r || !r.c || charGone(name) || ((r.l || 0) < ST.minLevel && !cls.byChar[name])) continue;
-    const spec = charSpec(name);
-    const u = { name, display: name, class: r.c, spec, role: roleOf(r.c, spec), tag: r.tag || null,
+    const raw = charSpec(name), spec = baseSpec(raw);
+    const u = { name, display: name, class: r.c, spec, sk: raw === "Shockadin", role: roleOf(r.c, spec), tag: r.tag || null,
                 pres: away[name] || (r.tag && awayTag[r.tag]) || null };
     rest.push(u); byName[name] = u;
   }
@@ -258,23 +259,26 @@ function signupFor(name) {
   }
   return suMemo[name];
 }
-// Spé principale d'un perso : choisie à la main, sinon Event Class / arbre de talents le plus rempli (exe), sinon relevée
+// Spé principale d'un perso : choisie dans Members (propriétaire / officier, partagée), sinon à la main, sinon Event
+// Class / arbre de talents le plus rempli (exe), sinon relevée ; peut être « Shockadin » (baseSpec pour la logique)
+const specPick = name => (ST.specPicks || {})[name] || {};
 function charSpec(name) {
-  return ST.specs[name] || (ST.mainSpecs || {})[name] || (classEventEntries().byChar[name] || {}).s || ST.svSpecs[name] || ST.derivedSpecs[name] || null;
+  return specPick(name).m || ST.specs[name] || (ST.mainSpecs || {})[name] || (classEventEntries().byChar[name] || {}).s || ST.svSpecs[name] || ST.derivedSpecs[name] || null;
 }
 function unitFor(name) {
   const u = U.byName[name];
   if (u) return u;
   const r = ST.roster[name], m = name.match(/#([A-Z]+)$/), o = (ST.charOwners || {})[name], su = name.startsWith("~") ? signupFor(name) : null;
   const cls = (r && r.c) || (o && o.c) || (m && m[1]);
-  const spec = ST.specs[name] || (ST.mainSpecs || {})[name] || (classEventEntries().byChar[name] || {}).s || (su && su.s) || ST.svSpecs[name] || ST.derivedSpecs[name] || null;
-  return { name, display: name.replace(/^~/, "").replace(/#.*$/, ""), class: cls, spec, role: roleOf(cls, spec) || (su && su.r) || null,
+  const raw = specPick(name).m || ST.specs[name] || (ST.mainSpecs || {})[name] || (classEventEntries().byChar[name] || {}).s || (su && su.s) || ST.svSpecs[name] || ST.derivedSpecs[name] || null;
+  const spec = baseSpec(raw);
+  return { name, display: name.replace(/^~/, "").replace(/#.*$/, ""), class: cls, spec, sk: raw === "Shockadin", role: roleOf(cls, spec) || (su && su.r) || null,
            tag: (r && r.tag) || (su && su.tag), uid: su && su.uid, missing: !r && !o && !su };
 }
 // perso dans une compo : avec la spé choisie pour cette compo (comp.sp)
 function compUnit(comp, name) {
   const base = unitFor(name), osp = comp && comp.sp && comp.sp[name];
-  return osp ? Object.assign({}, base, { spec: osp, role: roleOf(base.class, osp) }) : base;
+  return osp ? Object.assign({}, base, { spec: baseSpec(osp), sk: osp === "Shockadin", role: roleOf(base.class, osp) }) : base;
 }
 
 // ------------------------------------------------------------------ placements
@@ -565,8 +569,21 @@ const LOOT_VIEW_FLAG = { role: "lootHideCompare", all: "lootHideHistory" };
 const lootViews = () => LOOT_VIEWS.filter(([k]) => !LOOT_VIEW_FLAG[k] || !lootFlag(LOOT_VIEW_FLAG[k]));
 function renderViewBtns() {
   const tab = UI.lootTab || "all";
-  $("#viewBtns").innerHTML = lootViews().map(([k, l]) => `<button class="ltab${tab === k ? " on" : ""}" data-ltab="${k}">${L(l)}</button>`).join("");
+  $("#viewBtns").innerHTML = lootViews().map(([k, l]) => `<button class="ltab${tab === k ? " on" : ""}" data-ltab="${k}"><span>${L(l)}</span></button>`).join("");
 }
+// Loots : sous-onglets à gauche, sélecteur de phase au milieu (comme Raid Comps) ; s'il touche le dernier sous-onglet,
+// décalé à droite (léger écart) tant qu'il ne touche pas le lockout (ou la recherche)
+function layoutLootSub() {
+  const sel = $("#lootPhSel"), sub = sel && sel.parentElement;
+  if (!sel || UI.page !== "loots" || sel.hidden) { if (sel) sel.style.left = ""; return; }
+  const box = sub.getBoundingClientRect(), w = sel.offsetWidth, GAP = 14;
+  const tabs = [...$("#viewBtns").children], last = tabs.length && tabs[tabs.length - 1].getBoundingClientRect();
+  const minL = last ? last.right - box.left + GAP : 0;
+  const right = [$("#navPrev"), $("#lootSearch"), $("#tabLookBtn")].find(e => e && !e.hidden && e.offsetWidth);
+  const maxL = (right ? right.getBoundingClientRect().left - box.left : box.width) - GAP - w;
+  sel.style.left = Math.max(0, Math.min(Math.max((box.width - w) / 2, minL), maxL)) + "px";
+}
+addEventListener("resize", () => layoutLootSub());
 // Sélecteur de phase (Loots, assiduité des Members, Logs) : 5 cases au plus, la choisie au milieu en blanc, une de
 // chaque côté normale, la 2e de chaque côté estompée ; « P1 », « P2 »… puis « ALL » après la dernière (attr = data-…)
 function phaseBtns(cur, attr, max = PHASES.length) {
@@ -697,6 +714,8 @@ function renderTop() {
   // sous-barre
   const nav = UI.page !== "members" && UI.page !== "craft" && UI.page !== "logs";
   ["#navPrev", "#navNext", "#navToday"].forEach(id => { $(id).hidden = !nav; });
+  $("#subTitle").hidden = UI.page === "loots" && !["role", "all"].includes(UI.lootTab || "all");
+  requestAnimationFrame(layoutLootSub);
   // Loots : pas de « Today » (le lockout se choisit par les flèches ou la liste)
   if (UI.page === "loots") $("#navToday").hidden = true;
   $("#navAbsence").hidden = UI.page !== "calendar";
@@ -715,7 +734,11 @@ function renderTop() {
     $("#subTitle").textContent = a ? a.label : L("No comp");
     $("#subInfo").textContent = L("Click the title to choose a comp (wheel: next / previous) · click a name to change it");
   } else if (UI.page === "loots") {
-    // lockout du tri des loots (jamais dans le futur ; « All » = pas de filtre)
+    // lockout du tri des loots (jamais dans le futur ; « All » = pas de filtre) : Compare et History seulement, à
+    // gauche de la recherche
+    const week = ["role", "all"].includes(UI.lootTab || "all");
+    ["#navPrev", "#navNext"].forEach(id => { $(id).hidden = !week; });
+    document.body.classList.toggle("lweek", week);
     if (UI.lootWeek) $("#subTitle").innerHTML = weekLabelHtml(UI.lootWeek); else $("#subTitle").textContent = L("All lockouts");
     renderLootFilter();
   } else if (UI.page === "logs") {
@@ -734,9 +757,11 @@ function renderTop() {
 // icône toujours en couleur, cadre vert (présent) / rouge (absent) ; d (debuffs) = { v : variante, effect : texte remplacé }
 const buffVar = (b, v) => (v && b.vars && b.vars[v]) || b;
 const buffImg = (b, on, kind, i, d) => `<img class="bf${on ? " on" : ""}" src="${ic(buffVar(b, d && d.v).icon)}" alt="" data-tip="${kind}:${i}:${on ? 1 : 0}:${(d && d.v) || ""}:${d && d.effect ? 1 : 0}">`;
+// icône d'une spé (Shockadin : Holy Shock)
+const specIcon = (cls, spec) => spec === "Shockadin" ? ICON_URL(SHOCK_ICON, "medium") : ST.specIcons[`${cls}:${spec}`];
 const specImg = (u, fallback, spec) => {
-  spec = spec || u.spec;
-  const src = spec && ST.specIcons[`${u.class}:${spec}`];
+  spec = spec || (u.sk ? "Shockadin" : u.spec);
+  const src = spec && specIcon(u.class, spec);
   return src ? `<img class="si" src="${src}" alt="">` : (fallback || "");
 };
 let LOCKS = [];
@@ -1043,6 +1068,7 @@ const MCMP = Object.assign({}, CMP, {
   spec: u => { const ci = CLASS_ORDER.indexOf(u.class), si = (SPECS[u.class] || []).findIndex(s => s[0] === u.spec);
                return (ci < 0 ? 99 : ci) * 100 + (si < 0 ? 99 : si); },
   attendance: u => -attendanceOf(u).n,
+  main: u => mainRank(u.name),
   // rôle Discord du joueur (social.js) : propriétaire, Officier, Titulaire, La Relève, autres
   drole: u => discordRoleRank(socialId(u)),
 });
@@ -1242,7 +1268,7 @@ const myStatusIcon = ev => {
   const spots = k === "absence" ? null : myCompSpots(ev), spot = spots ? spots[0] || false : null;
   if (spot) {
     // plusieurs persos comptés (plusieurs compos) : leurs icônes de spé ; plus de trois : la 1re et « +X »
-    const icon = x => { const src = x.spec && ST.specIcons[`${x.cls}:${x.spec}`]; return src ? `<img src="${src}" alt="">` : `<span class="signed">${L("In")}</span>`; };
+    const icon = x => { const src = x.spec && specIcon(x.cls, x.spec); return src ? `<img src="${src}" alt="">` : `<span class="signed">${L("In")}</span>`; };
     const what = spots.map(x => ((x.spec || "") + " " + L(CLASS_NAME[x.cls] || "")).trim()).join(", ");
     const inner = spots.length > 3 ? icon(spots[0]) + `<span class="evmore">+${spots.length - 1}</span>` : spots.map(icon).join("");
     return `<span class="evme${spots.length > 1 ? " multi" : ""}" data-help="${esc(L("You are in the comp: {0}", what))}">${inner}</span>`;
@@ -1532,11 +1558,13 @@ function memberRoster() {
   for (const [name, o] of Object.entries(owners)) if (!ST.roster[name] && o && o.c) rows.push([name, { c: o.c, l: o.l, owner: o }]);
   return rows.filter(([name]) => !charGone(name)).map(([name, r]) => {
     // spé de référence (tri, loot...) : Event Class (exe), sinon charSpec ; spés affichées : celles relevées dans les talents
-    const info = ST.chars[name], detected = talentSpecs(r.c, info);
-    const spec = (ST.mainSpecs || {})[name] || charSpec(name) || detected[0] || null;
+    const info = ST.chars[name], detected = talentSpecs(r.c, info), pick = specPick(name);
+    const raw = pick.m || (ST.mainSpecs || {})[name] || charSpec(name) || detected[0] || null, spec = baseSpec(raw);
     const o = owners[name];
+    // spés montrées : principale (choisie, sinon talents / spé de référence), secondaire (choisie, sinon 2e des talents)
+    const ms = raw, os = pick.o || detected.find(x => x !== ms) || null;
     return { name, display: name, class: r.c, level: r.l || 0, tag: r.tag || null, discord: (r.tag && names[r.tag]) || (o && o.name) || null,
-             specs: detected.length ? detected : spec ? [spec] : [], spec, role: roleOf(r.c, spec), info };
+             specs: [ms, os].filter(Boolean), ms, os, picked: pick, spec, sk: raw === "Shockadin", role: roleOf(r.c, spec), info };
   });
 }
 // Spés relevées dans les talents du perso (arbre le plus rempli de chaque spé de talents, l'active d'abord, sans doublon)
@@ -1546,10 +1574,55 @@ function talentSpecs(cls, info) {
   const specs = asList(info && info.talents).slice().sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0));
   for (const sp of specs) {
     const pts = asList(sp.tabs).map(t => +(t && t.p) || 0), m = Math.max(0, ...pts);
-    const s = m > 0 && names[pts.indexOf(m)];
+    const s = m > 0 && (cls === "PALADIN" && isShockadin(sp) ? "Shockadin" : names[pts.indexOf(m)]);
     if (s && !out.includes(s) && out.length < 2) out.push(s);
   }
   return out;
+}
+// Shockadin : Holy Shock et Consecrated Ground pris dans cette spé de talents
+function isShockadin(sp) {
+  const got = new Set(asList(sp && sp.tabs).flatMap(tab => asList(tab && tab.t)).filter(t => t && +t.r > 0).map(t => t.n));
+  return got.has("Holy Shock") && got.has("Consecrated Ground");
+}
+// « Main » (1) / « Main² » (2) d'un perso : un de chaque par joueur, choisi dans Members ; 0 = rien
+const mainOf = name => +specPick(name).mn || 0;
+// rang pour trier / l'autofill : Main, Main², puis les autres
+const mainRank = name => ({ 1: 0, 2: 1 })[mainOf(name)] ?? 2;
+const MAIN_LABEL = { 1: "Main", 2: "Main²" };
+function memberMainHtml(u) {
+  const v = mainOf(u.name), edit = !u.notLinked && !String(u.name).startsWith("~") && canEditSpecs(u.name);
+  const badge = v ? `<b class="mnb m${v}">${L(MAIN_LABEL[v])}</b>` : "";
+  return edit ? `<button class="mnbox${v ? "" : " add"}" data-mmain="${esc(u.name)}" data-help="${esc(L("Main character of the player (one Main and one Main² per player) · click to change"))}">${badge}</button>` : badge;
+}
+function memberMainMenu(el, u) {
+  const v = mainOf(u.name), set = x => () => api().set_spec_pick(u.name, "mn", x).then(r => { if (r && r.ok === false) toast(r.error, true); reload(); });
+  openMenu(el, [{ text: L("Main"), on: v === 1, fn: set(1) }, { text: L("Main²"), on: v === 2, fn: set(2) }, { text: L("None"), mute: true, on: !v, fn: set(null) }]);
+}
+// spés modifiables : propriétaire du perso ou officier (hors guilde : réglage local)
+// (même règle que set_spec_pick : officier du serveur, qui peut écrire les docs de la guilde)
+const canEditSpecs = name => !(ST.cloud && ST.cloud.logged && ST.cloud.guild) || !!(ST.cloud.member && ST.cloud.member.officer)
+  || (ST.myChars || []).some(c => c.name === name);
+// colonne Spec de Members : principale, secondaire ; modifiable -> clic = choix ; une seule spé -> case vide à remplir
+function memberSpecsHtml(u) {
+  if (!u.picked) return u.specs.map(s => specImg(u, "", s)).join("");      // inscrit pas encore lié : spé de l'inscription
+  const edit = !u.notLinked && classSpecs(u.class).length && canEditSpecs(u.name);
+  const box = (slot, s) => {
+    const auto = !s || u.picked[slot] ? "" : " · " + L(talentSpecs(u.class, u.info).includes(s) ? "from the talents" : "automatic");
+    const help = L(slot === "m" ? "Main spec" : "Off spec") + (s ? ": " + L(s) : "") + auto
+      + (edit ? " · " + L("click to change") : "");
+    const img = s ? specImg(u, `<span class="sptx">${esc(L(s).slice(0, 2))}</span>`, s) : "";      // icône pas encore reçue : initiales
+    return edit ? `<button class="spbox${s ? "" : " add"}" data-mspick="${esc(u.name)}" data-slot="${slot}" data-help="${esc(help)}">${img}</button>`
+      : s ? `<span class="spbox" data-help="${esc(help)}">${img}</span>` : "";
+  };
+  return box("m", u.ms) + (u.os || edit ? box("o", u.os) : "");
+}
+function memberSpecMenu(el, u, slot) {
+  const cur = slot === "m" ? u.ms : u.os, other = slot === "m" ? u.os : u.ms;
+  const set = s => () => api().set_spec_pick(u.name, slot, s).then(r => { if (r && r.ok === false) toast(r.error, true); reload(); });
+  const items = classSpecs(u.class).map(([s, role]) => ({ text: `${L(s)}  (${L(role)})`, icon: specIcon(u.class, s), color: CLASS_COLOR[u.class],
+    on: cur === s, mute: slot === "o" && s === other, fn: set(s) }));
+  if (u.picked[slot]) items.push({ text: L("From the talents"), mute: true, fn: set(null) });
+  openColsMenu(el, [{ title: L(slot === "m" ? "Main spec" : "Off spec"), items }]);
 }
 // Nom Forever « Prénom Nom » : le nom de famille plus discret (gris, normal, plus petit)
 // short (compos, liste) : seulement l'initiale du nom de famille (« Sundance P. »)
@@ -1743,6 +1816,44 @@ function setAttPhase(i) {
   render();
 }
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-attph]"); if (b) { e.stopPropagation(); setAttPhase(+b.dataset.attph); } });
+// Members : largeur des colonnes (perso, Main, Discord, niveau, spés, présence, métiers, rôle ; le reste = la croix) ;
+// survol de l'en-tête : un trait à chaque séparation, à glisser pour régler la largeur de la colonne de gauche
+const MCOLS = [190, 64, 150, 50, 70, 90, 220, 120], MCOL_GAP = 8, MCOL_PAD = 8;
+const mCols = () => MCOLS.map((w, i) => Math.max(30, +((UI.mCols || [])[i]) || w));
+function applyMCols() {
+  const page = $("#page-members"), head = page && page.querySelector(".mhead");
+  if (!head) return;
+  const w = mCols();
+  page.style.setProperty("--mcols", w.map(x => x + "px").join(" ") + " 1fr");
+  if (!head.querySelector(".mcolh")) head.insertAdjacentHTML("beforeend", w.map((_, i) => `<i class="mcolh" data-mcol="${i}"></i>`).join(""));
+  let x = MCOL_PAD;
+  head.querySelectorAll(".mcolh").forEach((h, i) => { x += w[i]; h.style.left = (x + MCOL_GAP / 2) + "px"; x += MCOL_GAP; });
+}
+let mColDrag = null;
+document.addEventListener("pointerdown", e => {
+  const h = e.button === 0 && e.target.closest && e.target.closest(".mcolh");
+  if (!h) return;
+  e.preventDefault(); e.stopPropagation();
+  mColDrag = { i: +h.dataset.mcol, x: e.clientX, w: mCols() };
+  h.classList.add("on"); document.body.classList.add("mcoldrag");
+}, true);
+document.addEventListener("pointermove", e => {
+  if (!mColDrag) return;
+  const w = mColDrag.w.slice();
+  w[mColDrag.i] = Math.max(30, Math.round(w[mColDrag.i] + e.clientX - mColDrag.x));
+  UI.mCols = w; applyMCols();
+});
+document.addEventListener("pointerup", () => {
+  if (!mColDrag) return;
+  mColDrag = null; saveUI();
+  document.querySelectorAll(".mcolh.on").forEach(h => h.classList.remove("on")); document.body.classList.remove("mcoldrag");
+});
+// double-clic sur un trait : largeur d'origine de la colonne
+document.addEventListener("dblclick", e => {
+  const h = e.target.closest && e.target.closest(".mcolh");
+  if (!h) return;
+  const w = mCols(); w[+h.dataset.mcol] = MCOLS[+h.dataset.mcol]; UI.mCols = w; saveUI(); applyMCols();
+});
 // Members : clic sur le titre d'une colonne = ce critère passe en tête de la priorité de tri
 document.addEventListener("click", e => {
   const h = e.target.closest && e.target.closest("#page-members .mhead [data-msort]");
@@ -1882,7 +1993,7 @@ function noCharHtml(list) {
   players.sort((a, b) => (byRole ? discordRoleRank(a.id) - discordRoleRank(b.id) : 0) || byName(a, b) || discordRoleRank(a.id) - discordRoleRank(b.id));
   const open = !!UI.mNoCharOpen;
   let h = `<div class="mnoch${open ? " open" : ""}" data-mnochar="1"><i class="tri"></i>${L("Discord members without character")}<span class="n">${players.length}</span></div>`;
-  if (open) for (const p of players) h += `<div class="mrow nochar"><span class="cn"></span><span class="dc">${esc(p.name)}</span><span class="lv"></span><span class="sp"></span><span class="at"></span><span class="pf"></span><span class="dr">${discordRoleHtml(p.id)}</span><span class="mx"></span></div>`;
+  if (open) for (const p of players) h += `<div class="mrow nochar"><span class="cn"></span><span class="mn"></span><span class="dc">${esc(p.name)}</span><span class="lv"></span><span class="sp"></span><span class="at"></span><span class="pf"></span><span class="dr">${discordRoleHtml(p.id)}</span><span class="mx"></span></div>`;
   return h;
 }
 document.addEventListener("click", e => {
@@ -1904,6 +2015,7 @@ function renderMembers() {
   document.querySelector('[data-chipbar="membersOrder"]').innerHTML = chipsHtml(UI.membersOrder);
   // titres de colonne : critère de tri en tête marqué
   document.querySelectorAll("#page-members .mhead [data-msort]").forEach(h => h.classList.toggle("on", h.dataset.msort === UI.membersOrder[0]));
+  applyMCols();
   $("#mCount").textContent = L("{0} characters · {1} with Guild Tool data", list.length, list.filter(u => u.info).length);
   // pas de ligne d'en-tête par critère : l'ordre de la liste suffit ; officiers : croix pour retirer un perso de la base
   const off = isOfficerUser();
@@ -1918,9 +2030,10 @@ function renderMembers() {
     const cls = (u.class || "").toLowerCase();
     html += `<div class="mrow${expanded === u.name ? " open" : ""}" data-detail="${esc(u.name)}" style="--c:${CLASS_COLOR[u.class] || "#9a9ea9"}">
       <span class="cn">${cls ? `<img src="icons/class_${cls}.jpg" alt="">` : ""}<b>${nameHtml(u.display)}</b></span>
+      <span class="mn">${memberMainHtml(u)}</span>
       <span class="dc${u.discord ? "" : " mute"}">${esc(u.discord || (u.tag ? "@" + u.tag : ""))}</span>
       <span class="lv">${u.level || ""}</span>
-      <span class="sp">${u.specs.map(s => specImg(u, "", s)).join("")}</span>
+      <span class="sp">${memberSpecsHtml(u)}</span>
       <span class="at">${(() => { const a = attendanceOf(u); return a.total ? `${a.n} <em>(${a.total})</em>` : '<span class="mute">-</span>'; })()}</span>
       <span class="pf">${profs}</span><span class="dr">${discordRoleHtml(socialId(u))}</span><span class="mx">${u.notLinked ? `<em class="nl" data-help="Signed up in the Event Class but no character linked through Guild Tool yet.">${L("Not linked")}</em>` : ""}${off ? `<button class="mdel" data-mdel="${esc(u.name)}" data-help="Remove this character from the shared database (everyone stops seeing it).">×</button>` : ""}</span></div>`;
     if (expanded === u.name) html += detailHtml(u);
@@ -2031,9 +2144,12 @@ function openColsMenu(anchor, cols) {
 function compSpecMenu(el, comp, name) {
   const u = unitFor(name), cur = comp.sp && comp.sp[name];
   if (!SPECS[u.class]) return;
-  // icône de la spé devant son nom
-  const items = SPECS[u.class].map(([s]) => ({ text: L(s), icon: ST.specIcons[`${u.class}:${s}`], color: CLASS_COLOR[u.class],
-    on: (cur || u.spec) === s, fn: () => { (comp.sp = comp.sp || {})[name] = s; commit(); } }));
+  // icône de la spé devant son nom ; spés principale (MS) / secondaire (OS) choisies dans Members en tête
+  const pick = specPick(name), ms = pick.m || (u.sk ? "Shockadin" : u.spec), os = pick.o;
+  const rank = s => s === ms ? 0 : s === os ? 1 : 2;
+  const items = classSpecs(u.class).map(([s]) => s).sort((a, b) => rank(a) - rank(b)).map(s => ({
+    text: L(s) + (s === ms ? " · MS" : s === os ? " · OS" : ""), icon: specIcon(u.class, s), color: CLASS_COLOR[u.class],
+    on: (cur || ms) === s, fn: () => { (comp.sp = comp.sp || {})[name] = s; commit(); } }));
   if (cur) items.push({ text: L("Usual spec"), mute: true, fn: () => { delete comp.sp[name]; commit(); } });
   openColsMenu(el, [{ title: L(CLASS_NAME[u.class] || ""), items }]);
 }
@@ -2058,8 +2174,10 @@ function phSpecMenu(el, comp, slot) {
 }
 function specMenu(at, u) {
   if (!SPECS[u.class]) return;
-  const items = SPECS[u.class].map(([s, role]) => ({ text: `${s}  (${L(role)})`, on: u.spec === s, fn: () => api().set_spec(u.name, s).then(reload) }));
-  items.push({ text: L("Clear spec"), mute: true, fn: () => api().set_spec(u.name, null).then(reload) });
+  const shared = !u.name.startsWith("~") && canEditSpecs(u.name), cur = u.sk ? "Shockadin" : u.spec;
+  const set = s => () => (shared ? api().set_spec_pick(u.name, "m", s) : api().set_spec(u.name, s)).then(reload);
+  const items = classSpecs(u.class).map(([s, role]) => ({ text: `${L(s)}  (${L(role)})`, on: cur === s, fn: set(s) }));
+  items.push({ text: L("Clear spec"), mute: true, fn: set(null) });
   openMenu(at, items);
 }
 
@@ -2240,6 +2358,16 @@ document.addEventListener("click", async e => {
     toast(L("{0} restored.", el.dataset.mrestore.replace(/^~/, "").replace(/#.*$/, "")));
     reload(); return;
   }
+  if ((el = t.closest("[data-mmain]"))) {
+    const u = memberUnits().find(x => x.name === el.dataset.mmain);
+    if (u) memberMainMenu(el, u);
+    return;
+  }
+  if ((el = t.closest("[data-mspick]"))) {
+    const u = memberUnits().find(x => x.name === el.dataset.mspick);
+    if (u) memberSpecMenu(el, u, el.dataset.slot);
+    return;
+  }
   if ((el = t.closest("[data-detail]"))) { expanded = expanded === el.dataset.detail ? null : el.dataset.detail; render(); return; }
   // tuile « + »
   if ((el = t.closest("[data-addraid]"))) { addState = { raid: el.dataset.addraid }; render(); return; }
@@ -2389,14 +2517,12 @@ document.addEventListener("mouseover", e => {
 let postComp = null;
 const inGuildPost = () => !!(ST.cloud && ST.cloud.logged && ST.cloud.guild);
 function openPost(id) {
-  const hooks = ST.config.webhooks || [];
-  // salons du serveur Discord de la guilde (relevés à la synchro, publiés par le bot du serveur), puis webhooks
+  // salons du serveur Discord de la guilde (relevés à la synchro, publiés par le bot du serveur)
   const chans = inGuildPost() ? Object.entries(ST.rhChannels || {}).sort((a, b) => String(a[1]).localeCompare(String(b[1]))) : [];
-  if (!hooks.length && !chans.length) { toast(L("Add a Discord channel (webhook) in Settings first."), true); toggleSettings(true); return; }
+  if (!chans.length) { toast(L(inGuildPost() ? "No Discord channel read yet: Sync first." : "Log in with Discord and choose your guild server to post on Discord."), true); return; }
   postComp = compById(id);
   const r = raidByKey(postComp.raid), ev = eventById(postComp.event);
-  const opts = (chans.length ? `<optgroup label="${esc(L("Discord server"))}">${chans.map(([cid, n]) => `<option value="c:${cid}">#${esc(String(n).replace(/^#/, ""))}</option>`).join("")}</optgroup>` : "")
-    + (hooks.length ? `<optgroup label="${esc(L("Webhooks"))}">${hooks.map((h, i) => `<option value="h:${i}">${esc(h.name || L("Channel") + " " + (i + 1))}</option>`).join("")}</optgroup>` : "");
+  const opts = chans.map(([cid, n]) => `<option value="c:${cid}">#${esc(String(n).replace(/^#/, ""))}</option>`).join("");
   $("#postHook").innerHTML = opts;
   // dernier salon choisi
   if (UI.postTarget && [...$("#postHook").options].some(o => o.value === UI.postTarget)) $("#postHook").value = UI.postTarget;
@@ -2415,9 +2541,7 @@ $("#postSend").addEventListener("click", async () => {
     }
     const target = $("#postHook").value;
     UI.postTarget = target; saveUI();
-    const res = target.startsWith("c:")
-      ? await api().post_discord(-1, $("#postText").value, mentions(postComp).uids, image, target.slice(2), postComp.id)
-      : await api().post_discord(+target.slice(2), $("#postText").value, mentions(postComp).uids, image);
+    const res = await api().post_discord(-1, $("#postText").value, mentions(postComp).uids, image, target.slice(2), postComp.id);
     if (res.ok) { $("#postModal").hidden = true; toast(L("Posted to Discord.")); } else toast(res.error, true);
   } catch (err) { toast(String(err), true); }
   btn.disabled = false; btn.textContent = L("Post");

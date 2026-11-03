@@ -97,7 +97,8 @@ const afSort = (list, key) => list.map((u, i) => [u, i]).sort((a, b) => key(a[0]
 // -> { comps : membres de chaque compo (déjà placés d'abord), prefs : Map perso -> groupes voulus }
 function afPlan(candidates, size, comps, buffsOnly) {
   const hReq = AF_HEALS[size], roleCap = { Tank: AF_TANKS, Healer: hReq, Dps: size - AF_TANKS - hReq };
-  let pool = afSort(candidates, u => AF_STATUS[u.status] ?? 0);
+  // persos « Main » d'abord, puis « Main² », puis les autres (Members) ; à rang égal, l'état de l'inscription
+  let pool = afSort(candidates, u => mainRank(u.name) * 100 + (AF_STATUS[u.status] ?? 0));
   const out = comps.map(c => c.slice()), prefs = new Map();
   // compos équilibrées : au moins 80 % de chacune remplissable
   const total = pool.length + out.reduce((t, c) => t + c.length, 0);

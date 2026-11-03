@@ -109,13 +109,14 @@ function discordRoleHtml(id) {
   return `${r.owner ? `<span class="dcrown" data-help="Owner of the Discord server">${CROWN_SVG}</span>` : ""}<span${r.color ? ` style="color:${r.color}"` : ""}>${esc(r.name)}</span>`;
 }
 
-const socLegend = () => `<b>${esc(L("Preference Score"))}</b>` + [5, 4, 3, 2, 1].map(i =>
+// signification des notes : dans la description, en haut du cadre
+const socLegend = () => `<div class="soclgs">` + [5, 4, 3, 2, 1].map(i =>
   `<div class="soclg"><span class="stars on${i} sc${i}">${SOC_STAR_SVG.repeat(5)}</span>${i} : ${esc(L(SOC_LABELS[i]))}</div>`).join("")
-  + `<div class="p">${esc(L("Only you see your scores. No score counts as 3."))}</div>`;
+  + `<div class="help">${esc(L("No score counts as 3."))}</div></div>`;
 // sans note : affichée comme 3 (elle compte comme 3) ; couleur et opacité selon la note (sc1..sc5, style.css)
 function starsHtml(id, score) {
   const shown = score || 3;
-  return `<span class="stars sc${shown}" data-socid="${esc(id)}" data-tiphtml="${esc(socLegend())}">${[1, 2, 3, 4, 5].map(i =>
+  return `<span class="stars sc${shown}" data-socid="${esc(id)}">${[1, 2, 3, 4, 5].map(i =>
     `<button class="st${i <= shown ? " on" : ""}" data-star="${i}">${SOC_STAR_SVG}</button>`).join("")}</span>`;
 }
 
@@ -136,9 +137,10 @@ function renderSocial() {
       <button class="sochead" data-socfold="1"><i class="tri"></i>${L("Preference Score")}</button>
       <div class="socbody">
         <p class="help">${L("How much you like to play with each player. Your scores are private: nobody sees them, not even the officers. Autofill uses them to put players who get along in the same comps.")}</p>
+        ${socLegend()}
         <div class="soctop"><input id="socQ" placeholder="${esc(L("Search a Discord name"))}" autocomplete="off"><button class="ib" data-socref="1" data-help="Read the members of the Discord server again">↻</button></div>
         <div class="help socerr" id="socErr"></div>
-        <div class="sochd"><span data-socsort="alpha" data-help="Sort by this column">${L("Discord")}</span><span data-socsort="chars" data-help="Identified characters of the player (sort by this column)">${L("Chars")}</span><span data-tiphtml="${esc(socLegend())}">${L("Score")}</span></div>
+        <div class="sochd"><span data-socsort="alpha" data-help="Sort by this column">${L("Discord")}</span><span data-socsort="chars" data-help="Identified characters of the player (sort by this column)">${L("Chars")}</span><span>${L("Score")}</span></div>
         <div class="soclist" id="socList"></div>
       </div></div>`;
   }

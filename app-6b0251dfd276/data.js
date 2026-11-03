@@ -35,8 +35,14 @@ const TALENT_SPECS = { WARRIOR: ["Arms", "Fury", "Protection"], PALADIN: ["Holy"
   DRUID: ["Balance", "Feral", "Restoration"], PRIEST: ["Discipline", "Holy", "Shadow"], SHAMAN: ["Elemental", "Enhancement", "Restoration"],
   ROGUE: ["Assassination", "Combat", "Subtlety"], HUNTER: ["Beastmastery", "Marksmanship", "Survival"], MAGE: ["Arcane", "Fire", "Frost"],
   WARLOCK: ["Affliction", "Demonology", "Destruction"] };
+// Shockadin (talents Holy Shock + Consecrated Ground) : 2e spé DPS mêlée du paladin, un Retribution pour le rôle,
+// les buffs et l'apport en raid (baseSpec) ; seule l'icône change (Holy Shock)
+const SPEC_EXTRA = { PALADIN: [["Shockadin", "Melee"]] };
+const SHOCK_ICON = "spell_holy_searinglight";
+const classSpecs = cls => (SPECS[cls] || []).concat(SPEC_EXTRA[cls] || []);
+const baseSpec = s => s === "Shockadin" ? "Retribution" : s;
 function roleOf(cls, spec) {
-  const s = (SPECS[cls] || []).find(x => x[0] === spec);
+  const s = (SPECS[cls] || []).find(x => x[0] === baseSpec(spec));
   return s ? s[1] : null;
 }
 

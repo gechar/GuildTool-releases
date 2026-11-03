@@ -7,7 +7,7 @@
 
 const DICE_SVG = '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><circle class="pip" cx="8" cy="8" r="1.6"/><circle class="pip" cx="16" cy="8" r="1.6"/><circle class="pip" cx="12" cy="12" r="1.6"/><circle class="pip" cx="8" cy="16" r="1.6"/><circle class="pip" cx="16" cy="16" r="1.6"/></svg>';
 const LOOT_KIND = { bis: "Bis", upp: "Up+", up: "Up", os: "Off Spec", pvp: "PvP", mog: "Mog", de: "Disenchant", vendor: "Vendor" };
-let lootDay = "", lootEdit = null, lootKindEdit = null, lootNew = null;   // filtre (AAAAMMJJ) ; joueur / réaction en cours de changement ; ligne ajoutée
+let lootDay = "", lootEdit = null, lootKindEdit = null, lootKindOs = false, lootNew = null;   // filtre (AAAAMMJJ) ; joueur / réaction en cours de changement ; ligne ajoutée
 const lootYmd = t => { const d = new Date(t * 1000); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
 const lootDayLabel = k => { const s = String(k); return `${s.slice(6, 8)}/${s.slice(4, 6)}/${s.slice(0, 4)}`; };
 // p2 (deux chiffres) : events.js
@@ -185,8 +185,16 @@ function lootClass(name) {
 function lootKindHtml(r) {
   if (!r.kind) return `<span class="mute">—</span>`;
   const col = LOOT_KIND_COL[r.kind] || "#999ead";
-  const si = r.kind === "os" && r.spec && ST.specIcons[`${lootClass(r.to)}:${r.spec}`];
-  return `${si ? `<img class="lkos" src="${si}" alt="" data-help="${esc(r.spec)}">` : ""}<b style="color:${col}">${esc(L(LOOT_KIND[r.kind] || r.kind))}</b>`;
+  const si = r.kind === "os" && r.spec && specIcon(lootClass(r.to), r.spec);
+  return `${si ? `<img class="lkos" src="${si}" alt="" data-help="${esc(L(r.spec) + " (" + L(osRoleOf(lootClass(r.to), r.spec) || "?") + ")")}">` : ""}<b style="color:${col}">${esc(L(LOOT_KIND[r.kind] || r.kind))}</b>`;
+}
+
+// rôle rempli par une spé Off Spec (Loots : les chasseurs comptent comme Melee)
+const osRoleOf = (cls, spec) => cls === "HUNTER" ? "Melee" : roleOf(cls, spec);
+// spés proposées pour un Off Spec : celles de la classe du perso, sa spé secondaire (Members) d'abord
+function osSpecChoices(name) {
+  const cls = lootClass(name), u = memberUnits().find(x => x.name === name), os = u && u.os;
+  return classSpecs(cls).map(([s]) => s).sort((a, b) => (b === os) - (a === os)).map(s => ({ s, icon: specIcon(cls, s), role: osRoleOf(cls, s) }));
 }
 
 // ---------------------------------------------------------------- History
@@ -216,7 +224,10 @@ function renderLoots() {
         ? `<span class="efcombo"><input class="ef" id="lootToIn" value="" placeholder="${esc(L("Type a name"))}" autocomplete="off"><span class="eflist" id="lootToList"></span></span>`
         : `<b style="color:${CLASS_COLOR[cls] || "#fff"}">${nameHtml(r.to || "?")}</b>`}</span>
       <span class="lkd"${off ? ` data-lootkind="${esc(r.k)}" data-help="Double-click to change the roll"` : ""}>${kEditing
-        ? `<span class="efcombo"><span class="eflist kinds">${Object.entries(LOOT_KIND).map(([k, n]) => `<button data-lootkpick="${k}" style="color:${LOOT_KIND_COL[k] || "#ccc"}">${esc(L(n))}</button>`).join("")}</span></span>`
+        ? `<span class="efcombo"><span class="eflist kinds${lootKindOs ? " osspecs" : ""}">${lootKindOs
+          // Off Spec : seulement les icônes des spés de la classe (nom et rôle en infobulle)
+          ? osSpecChoices(r.to).map(o => `<button data-lootkspec="${esc(o.s)}" data-help="${esc(L(o.s) + " (" + L(o.role || "?") + ")")}">${o.icon ? `<img src="${o.icon}" alt="">` : `<span class="sptx">${esc(L(o.s).slice(0, 2))}</span>`}</button>`).join("")
+          : Object.entries(LOOT_KIND).map(([k, n]) => `<button data-lootkpick="${k}" style="color:${LOOT_KIND_COL[k] || "#ccc"}">${esc(L(n))}</button>`).join("")}</span></span>`
         : lootKindHtml(r)}</span>
       <span class="ldice" data-help="${esc(L("Same roll: {0}", same))}">${DICE_SVG}</span>
       <span class="ldate">${lootDateTxt(r.t || 0)}</span>
@@ -243,7 +254,8 @@ function lootNewRow() {
       ${cls ? ` style="color:${CLASS_COLOR[cls]}"` : ""}><span class="eflist" id="lnToList" hidden></span></span>
     <select class="lootsel" id="lnKind"><option value="">${L("Roll")}</option>${Object.entries(LOOT_KIND).map(([k, v]) =>
       `<option value="${k}"${n.kind === k ? " selected" : ""}>${esc(L(v))}</option>`).join("")}</select>
-    <span></span>
+    ${n.kind === "os" && n.to ? `<select class="lootsel" id="lnSpec" data-help="Off Spec: which spec">${osSpecChoices(n.to).map(o =>
+      `<option value="${esc(o.s)}"${n.spec === o.s ? " selected" : ""}>${esc(L(o.s))} (${esc(L(o.role || "?"))})</option>`).join("")}</select>` : "<span></span>"}
     <span class="efcombo"><input class="ef" id="lnDate" value="${lootDateTxt(n.t)}" autocomplete="off" data-help="Type the date and hour, or pick a day (wheel: next / previous day)">
       <span class="lncal" id="lnCal" hidden></span></span>
     <span class="lnbtns"><button class="lnok" data-lnsave="1" data-help="Save">✓</button><button class="ldel" data-lncancel="1" data-help="Cancel">×</button></span></div>`;
@@ -322,7 +334,10 @@ document.addEventListener("input", e => {
   if (e.target.id === "lnDate") lnFormat(e.target);
   if (e.target.id === "lnKind") lootNew.kind = e.target.value;
 });
-document.addEventListener("change", e => { if (e.target.id === "lnKind") lootNew.kind = e.target.value; });
+document.addEventListener("change", e => {
+  if (e.target.id === "lnKind") { lootNew.kind = e.target.value; lootNew.spec = null; renderLoots(); }
+  if (e.target.id === "lnSpec") lootNew.spec = e.target.value;
+});
 document.addEventListener("wheel", e => {
   const el = e.target.closest && e.target.closest("#lnCal, #lnDate");
   if (!el || !lootNew) return;
@@ -364,10 +379,20 @@ function renderLootRoles() {
   // filtre de rôle de cette vue seulement : les chasseurs comptent comme Melee
   const lootRole = u => u.class === "HUNTER" ? "Melee" : u.role;
   const tokens = lootQ().toLowerCase().split(",").map(s => s.trim()).filter(Boolean);
-  const units = memberUnits().filter(u => !String(u.name).startsWith("~") && (tokens.length
-    ? tokens.some(t => u.display.toLowerCase().includes(t) || String(u.name).toLowerCase().includes(t))
-    : (!anyR || UI.lootRoles[lootRole(u)]) && (!anyC || UI.lootClasses[u.class])));
-  for (const u of units) { u.loots = (byChar[u.name] || []).length; u.raids = raidsDone(u.name); }
+  // rôle de la spé principale choisi : tout ; sinon rôle d'un Off Spec choisi (loot roll Off Spec de ce rôle, ou spé
+  // secondaire de Members) : seulement ses loots Off Spec de ce rôle
+  const osOk = (u, r) => r.kind === "os" && r.spec && UI.lootRoles[osRoleOf(u.class, r.spec)];
+  const units = memberUnits().filter(u => {
+    u.offOnly = false;
+    if (String(u.name).startsWith("~")) return false;
+    if (tokens.length) return tokens.some(t => u.display.toLowerCase().includes(t) || String(u.name).toLowerCase().includes(t));
+    if (anyC && !UI.lootClasses[u.class]) return false;
+    if (!anyR || UI.lootRoles[lootRole(u)]) return true;
+    u.offOnly = (byChar[u.name] || []).some(r => osOk(u, r)) || !!(u.os && UI.lootRoles[osRoleOf(u.class, u.os)]);
+    return u.offOnly;
+  });
+  const loots = u => (byChar[u.name] || []).filter(r => !u.offOnly || osOk(u, r));
+  for (const u of units) { u.loots = loots(u).length; u.raids = raidsDone(u.name); }
   sortUnits(units, UI.lootOrder);
   const allR = ROLE_ORDER.every(r => UI.lootRoles[r]), allC = CLASS_ORDER.every(c => UI.lootClasses[c]);
   const dim = tokens.length ? " ignored" : "";
@@ -379,19 +404,20 @@ function renderLootRoles() {
     const it = r.id ? itemInfo(r.id) : { name: r.name }, d = new Date((r.t || 0) * 1000);
     return `<div class="lci"><span class="lcd">${p2(d.getDate())}/${p2(d.getMonth() + 1)}</span>`
       + `<span class="lcic"${it.icon ? ` style="background-image:url('${ICON_URL(it.icon)}')"` : ""} data-item="${r.id || ""}"></span>`
+      + (r.kind === "os" && r.spec && specIcon(lootClass(r.to), r.spec) ? `<img class="lcos" src="${specIcon(lootClass(r.to), r.spec)}" alt="" data-help="${esc(L(r.spec))}">` : "")
       + `<span class="lcn" data-item="${r.id || ""}" style="color:${QUALITY_COLOR[it.q] || "#fff"}">${esc(it.name || r.name || "?")}</span></div>`;
   };
   const kindLab = k => `<b class="lkind" style="color:${LOOT_KIND_COL[k]}">${L(LOOT_KIND_NAME[k])}</b>`;
   const cols = units.map(u => {
     const by = {};
-    for (const r of (byChar[u.name] || []).slice().sort((a, b) => (b.t || 0) - (a.t || 0))) {
+    for (const r of loots(u).sort((a, b) => (b.t || 0) - (a.t || 0))) {
       const k = LOOT_KIND_NAME[r.kind] ? r.kind : "other";
       (by[k] = by[k] || []).push(r);
     }
     const subs = LOOT_KIND_ORDER.filter(k => k !== "bis" && by[k]).map(k =>
       `<div class="lcol lsub"><div class="lsubh">${kindLab(k)}</div>${by[k].map(line).join("")}</div>`).join("");
     return `<div class="lcolw"><div class="lcol"><div class="lch"><small>${esc(u.discord || "")}</small>
-      <span class="lchn">${specImg(u, '<span class="ci"></span>')}<b style="color:${CLASS_COLOR[u.class] || "#fff"}">${nameHtml(u.display)}</b></span>
+      <span class="lchn">${u.offOnly && u.os ? specImg(u, '<span class="ci"></span>', u.os) : specImg(u, '<span class="ci"></span>')}<b style="color:${CLASS_COLOR[u.class] || "#fff"}">${nameHtml(u.display)}</b>${u.offOnly ? `<em class="lcoff" data-help="Shown for its Off Spec: only its Off Spec loots of the chosen roles">${L("Off Spec")}</em>` : ""}</span>
       <span class="lstat"><em>${L("{0} raids · {1} loots", u.raids, u.loots)}</em>${kindLab("bis")}</span></div>${(by.bis || []).map(line).join("") || `<div class="lcempty">—</div>`}</div>${subs}</div>`;
   }).join("");
   box.innerHTML = `<div class="lrbar"><span class="lroles">${roleBtns}</span><span class="mtop"><small>${L("Sort priority · drag to reorder")}</small>`
@@ -685,7 +711,7 @@ document.addEventListener("dblclick", e => {
   if (!canEdit() || !e.target.closest) return;
   const el = e.target.closest("[data-lootto]"), ek = e.target.closest("[data-lootkind]");
   if (el) { lootEdit = el.dataset.lootto; lootKindEdit = null; renderLoots(); }
-  else if (ek) { lootKindEdit = ek.dataset.lootkind; lootEdit = null; renderLoots(); }
+  else if (ek) { lootKindEdit = ek.dataset.lootkind; lootKindOs = false; lootEdit = null; renderLoots(); }
 });
 document.addEventListener("click", async e => {
   if (UI.page !== "loots") return;
@@ -695,6 +721,14 @@ document.addEventListener("click", async e => {
     const k = lootEdit, name = el.dataset.lootpick;
     lootEdit = null;
     const r = await api().loot_edit(k, name, false);
+    if (!r || r.ok === false) toast((r && r.error) || "Error", true);
+    reload(); return;
+  }
+  if ((el = t.closest("[data-lootkpick]")) && el.dataset.lootkpick === "os") { lootKindOs = true; renderLoots(); return; }
+  if ((el = t.closest("[data-lootkspec]"))) {
+    const k = lootKindEdit;
+    lootKindEdit = null; lootKindOs = false;
+    const r = await api().loot_edit(k, null, false, "os", el.dataset.lootkspec);
     if (!r || r.ok === false) toast((r && r.error) || "Error", true);
     reload(); return;
   }
@@ -738,7 +772,8 @@ document.addEventListener("click", async e => {
   if (t.closest("[data-lnsave]")) {
     if (!lootNew.id || !lootNew.to) { toast(L("Choose an item and a character."), true); return; }
     const kind = $("#lnKind") ? $("#lnKind").value : lootNew.kind;
-    const r = await api().loot_add({ id: lootNew.id, name: itemInfo(lootNew.id).name, to: lootNew.to, kind: kind || null, t: lootNew.t });
+    const spec = kind === "os" ? ($("#lnSpec") ? $("#lnSpec").value : lootNew.spec) || null : null;
+    const r = await api().loot_add({ id: lootNew.id, name: itemInfo(lootNew.id).name, to: lootNew.to, kind: kind || null, spec, t: lootNew.t });
     if (!r || r.ok === false) { toast((r && r.error) || "Error", true); return; }
     lootNew = null;
     reload(); return;
@@ -749,7 +784,7 @@ document.addEventListener("click", async e => {
     if (!t.closest("#lnDate") && !t.closest("#lnCal") && $("#lnCal")) $("#lnCal").hidden = true;
   }
   if (lootEdit && !t.closest(".lto")) { lootEdit = null; renderLoots(); }
-  if (lootKindEdit && !t.closest(".lkd")) { lootKindEdit = null; renderLoots(); }
+  if (lootKindEdit && !t.closest(".lkd")) { lootKindEdit = null; lootKindOs = false; renderLoots(); }
 });
 
 // ---------------------------------------------------------------- Wishlist (par perso, partagée avec le perso)

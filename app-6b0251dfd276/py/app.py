@@ -3,7 +3,7 @@
 - lit les SavedVariables de l'addon (roster de guilde, tags Discord, compos faites en jeu)
 - récupère les events et inscriptions Raid-Helper
 - écrit Interface/AddOns/GuildTool/Import.lua (chargé par l'addon au /reload)
-- affiche la même fenêtre que l'addon et poste les compos sur Discord via webhook
+- affiche la même fenêtre que l'addon et poste les compos sur Discord (bot du serveur de la guilde)
 """
 import base64
 import ctypes
@@ -61,7 +61,7 @@ DEFAULT_CONFIG = {
     "wowAccounts": [],
     # persos cachés : jamais envoyés à la guilde (ni par l'exe ni par l'addon) ; les nouveaux sont cachés si hideByDefault
     "hiddenChars": [], "knownChars": [], "hideByDefault": False,
-    "webhooks": [], "autoSyncMinutes": 10,
+    "autoSyncMinutes": 10,
     # apparence partagée avec l'addon (la plus récente gagne) ; bg = image de fond de fenêtre définie
     "appearance": {"compAlpha": 0.3, "bgAlpha": 0.6, "bg": False, "lockA": "#0e0f12", "lockB": "#34363e",
                    # Members : fond des arbres de talents, image de fond des persos
@@ -636,6 +636,7 @@ class Bridge:
                     cur["to"] = e["to"]
                 if e.get("kind"):
                     cur["kind"] = e["kind"]
+                    cur["spec"] = e.get("spec") if e["kind"] == "os" else None
                 cur["at"] = int(e["t"])
                 changed = True
         if changed:
@@ -659,8 +660,8 @@ class Bridge:
             self._kick_live()
         return {"ok": True, "k": k}
 
-    def loot_edit(self, k, to=None, delete=False, kind=None):
-        """(officier) Onglet Loots : attribution changée de joueur, de réaction, ou supprimée de la base."""
+    def loot_edit(self, k, to=None, delete=False, kind=None, spec=None):
+        """(officier) Onglet Loots : attribution changée de joueur, de réaction (Off Spec : avec sa spé), ou supprimée."""
         with self._lock:
             cur = (self._data.get("lootDB") or {}).get(str(k))
             if not cur:
@@ -671,6 +672,7 @@ class Bridge:
                 cur["to"] = str(to)
             if kind:
                 cur["kind"] = str(kind)
+                cur["spec"] = str(spec) if kind == "os" and spec else None
             cur["at"] = remote.now()
             _save(DATA_PATH, self._data)
             self._safe_write()
@@ -1280,6 +1282,8 @@ class Bridge:
         specs = dict(getattr(self, "_derived_specs", {}))
         specs.update(self._main_specs())
         specs.update(self._data["specs"])
+        specs.update({n: p["m"] for n, p in self._spec_picks().items() if p.get("m")})
+        specs = {n: base_spec(v) for n, v in specs.items()}
         icons = {k: True for k in self._data["specEmotes"] if os.path.exists(self._tga_path(k))}
         payload = {"t": remote.now(), "events": events, "weeks": weeks, "specs": specs, "specIcons": icons,
                    "charSpecs": {k: v[:2] for k, v in self._data["charSpecs"].items()},
@@ -1378,6 +1382,7 @@ class Bridge:
                 "roster": self.roster(),
                 "svSpecs": self._sv.get("specs") or {},
                 "specs": self._data["specs"],
+                "specPicks": self._spec_picks(),
                 "derivedSpecs": getattr(self, "_derived_specs", {}),
                 "lastSync": self._data["lastSync"],
                 "lastError": self._data["lastError"],
@@ -2167,7 +2172,7 @@ class Bridge:
             spec = next((s for s in specs if isinstance(s, dict) and s.get("active")), specs[0])
             pts = [int((t or {}).get("p") or 0) for t in _as_list((spec or {}).get("tabs"))]
             if pts and max(pts) > 0 and pts.index(max(pts)) < len(names):
-                out[n] = names[pts.index(max(pts))]
+                out[n] = "Shockadin" if cls == "PALADIN" and _shockadin(spec) else names[pts.index(max(pts))]
         cid = str(self._rh_settings().get("rhClassEvent") or "")
         ev = next((e for e in self._data.get("events") or [] if e.get("id") == cid), None)
         cc = self._data.get("cloudChars") or {}
@@ -2355,6 +2360,9 @@ class Bridge:
         gs = self._data.get("guildSettings") or {}
         if gs.get("t"):
             docs["settings"] = (int(gs["t"]), {k: v for k, v in gs.items() if k != "t"})
+        # spés d'un perso choisies dans Members (officier : un doc par perso ; propriétaire : avec son perso partagé)
+        for name, sp in (self._data.get("specPicks") or {}).items():
+            docs["spec_" + name] = (int(sp.get("t") or 0), {k: v for k, v in sp.items() if k != "t"})
         # report Warcraft Logs choisi par un officier pour un event (un doc par event)
         for eid, p in (self._data.get("wclPicks") or {}).items():
             docs["wcl_" + eid] = (int(p.get("t") or 0), {"code": p.get("code") or ""})
@@ -2522,6 +2530,10 @@ class Bridge:
             elif doc_id == "wcllogs":
                 # reports Warcraft Logs de la guilde, relus par le serveur (onglet Logs, calendrier)
                 self._data["wclLogs"] = value or {}
+            elif doc_id.startswith("spec_"):
+                cur = (self._data.get("specPicks") or {}).get(doc_id[5:]) or {}
+                if t >= int(cur.get("t") or 0):
+                    self._data.setdefault("specPicks", {})[doc_id[5:]] = {**(value or {}), "t": t}
             elif doc_id.startswith("wcl_"):
                 self._data.setdefault("wclPicks", {})[doc_id[4:]] = {"code": (value or {}).get("code") or "", "t": t}
             elif doc_id.startswith("online_"):
@@ -2800,7 +2812,7 @@ class Bridge:
             hidden.update(auto)
             self._config["hiddenChars"] = sorted(hidden)
             _save(CONFIG_PATH, self._config)
-        mine, gone = {}, []
+        mine, gone, picks = {}, [], self._spec_picks()
         for c in self._my_chars():
             n = c["name"]
             if n in hidden:
@@ -2813,6 +2825,9 @@ class Bridge:
             # wishlist du perso : partagée avec lui (les officiers la voient)
             data["wl"] = list((self._wishlist().get(n) or {}).get("items") or [])
             data.update({"c": c.get("class"), "l": c.get("level") or (roster.get(n) or {}).get("l")})
+            # spés choisies dans Members (principale / secondaire), la plus récente gagne chez chacun
+            if picks.get(n):
+                data["sp"] = picks[n]
             sig = _signature(data)
             if marks["charSig"].get(n) != sig:
                 mine[n] = data
@@ -2941,6 +2956,54 @@ class Bridge:
             with self._lock:
                 _save(DATA_PATH, self._data)
         return out
+
+    def _spec_picks(self):
+        """Spés choisies dans Members : {perso: {"m": principale, "o": secondaire, "t": date}} ; la plus récente entre
+        celle d'ici / d'un officier (doc « spec_<perso> ») et celle partagée par le propriétaire avec son perso."""
+        out = {n: dict(p) for n, p in (self._data.get("specPicks") or {}).items() if isinstance(p, dict)}
+        for n, c in (self._data.get("cloudChars") or {}).items():
+            sp = (c.get("data") or {}).get("sp")
+            if isinstance(sp, dict) and int(sp.get("t") or 0) > int((out.get(n) or {}).get("t") or 0):
+                out[n] = dict(sp)
+        return out
+
+    def _char_player(self, name):
+        """Joueur d'un perso : id Discord de son propriétaire (persos partagés), sinon tag Discord du roster."""
+        o = self._char_owners().get(name) or {}
+        if o.get("id"):
+            return "id:" + str(o["id"])
+        tag = (self.roster().get(name) or {}).get("tag")
+        return "tag:" + str(tag).lower() if tag else None
+
+    def set_spec_pick(self, name, slot, spec):
+        """Spé principale (slot « m ») ou secondaire (« o ») d'un perso, None = celle des talents ; « mn » : 1 = Main,
+        2 = Main² (un seul de chaque par joueur), None = rien. Propriétaire du perso ou officier (hors guilde : local)."""
+        cl = self._cloud
+        with self._lock:
+            mine = {c["name"] for c in self._my_chars()}
+            if cl.logged and cl.guild_id and not (cl.officer or name in mine):
+                return {"ok": False, "error": "Only the owner of this character or an officer can change its specs."}
+            if slot not in ("m", "o", "mn"):
+                return {"ok": False, "error": "Unknown spec slot."}
+            picks, t = self._spec_picks(), remote.now()
+            p = {k: v for k, v in (picks.get(name) or {}).items() if k in ("m", "o", "mn")}
+            if slot == "mn":
+                spec = int(spec) if spec in (1, 2, "1", "2") else None
+                # un seul Main et un seul Main² par joueur : retiré de ses autres persos
+                if spec:
+                    me = self._char_player(name)
+                    for n, q in picks.items():
+                        if n != name and int(q.get("mn") or 0) == spec and me and self._char_player(n) == me:
+                            self._data.setdefault("specPicks", {})[n] = {**{k: v for k, v in q.items() if k in ("m", "o")}, "t": t}
+            if spec:
+                p[slot] = spec if slot == "mn" else str(spec)
+            else:
+                p.pop(slot, None)
+            self._data.setdefault("specPicks", {})[name] = {**p, "t": t}
+            _save(DATA_PATH, self._data)
+            self._safe_write()
+        self.live(True)                 # envoyé tout de suite (officier : doc ; propriétaire : avec son perso)
+        return {"ok": True}
 
     def set_spec(self, name, spec):
         with self._lock:
@@ -3886,28 +3949,26 @@ class Bridge:
         except Exception as e:
             return str(e)
 
-    def check_webhook(self, url):
-        try:
-            return {"ok": True, **remote.check_webhook(url)}
-        except remote.RemoteError as e:
-            return {"ok": False, "error": str(e)}
-
     def post_discord(self, webhook_index, content, user_ids, image_data_url, channel_id="", comp_id=""):
         """Compo publiée sur Discord : salon du serveur de la guilde (bot du serveur, route « post » ; officiers ou
-        créateur de l'event commu), sinon webhook enregistré dans les Settings."""
-        if channel_id:
-            r = self._rh_call("post", channelId=str(channel_id), content=content or "", users=[str(u) for u in user_ids or []],
-                              image=image_data_url or "", compId=str(comp_id or ""))
-            return {"ok": True} if r.get("ok") else r
-        hooks = self._config.get("webhooks") or []
-        if not (0 <= webhook_index < len(hooks)):
-            return {"ok": False, "error": "Choose a channel (webhook) first."}
-        try:
-            png = remote.png_from_data_url(image_data_url) if image_data_url else None
-            remote.post_webhook(hooks[webhook_index]["url"], content, user_ids, png)
-            return {"ok": True}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+        créateur de l'event commu). webhook_index : ignoré (anciens webhooks des Settings, retirés)."""
+        if not channel_id:
+            return {"ok": False, "error": "Choose a channel first."}
+        r = self._rh_call("post", channelId=str(channel_id), content=content or "", users=[str(u) for u in user_ids or []],
+                          image=image_data_url or "", compId=str(comp_id or ""))
+        return {"ok": True} if r.get("ok") else r
+
+
+def base_spec(spec):
+    """Shockadin : un Retribution pour le rôle, les buffs, Raid-Helper et l'addon (seule l'icône change)."""
+    return "Retribution" if spec == "Shockadin" else spec
+
+
+def _shockadin(spec):
+    """Spé de talents de paladin avec Holy Shock et Consecrated Ground."""
+    got = {t.get("n") for tab in _as_list((spec or {}).get("tabs")) for t in _as_list((tab or {}).get("t"))
+           if isinstance(t, dict) and int(t.get("r") or 0) > 0}
+    return {"Holy Shock", "Consecrated Ground"} <= got
 
 
 def free_port(port):
